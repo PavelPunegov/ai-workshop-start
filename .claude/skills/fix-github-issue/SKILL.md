@@ -8,14 +8,23 @@ argument-hint: "[issue number or URL]"
 
 Take one issue from open to pull request. Use the `gh` CLI for everything on GitHub.
 
+## 0. Before you start
+
+Check the prerequisites and stop and ask the user if any of them fails:
+
+- `gh auth status` shows a login with permission to write issues and pull requests.
+- `node --version` is 24 or newer.
+- The working tree is clean: `git status --porcelain` prints nothing. Do not switch branches,
+  stash or discard changes on your own.
+
 ## 1. Pick the issue
 
 - With an argument, use that issue: `gh issue view <number> --comments`.
-- Without one, list candidates and pick the oldest open issue that is not assigned and has no
+- Without one, take the oldest open issue that is not assigned and has no
   `Delegated to AI agent` label:
 
   ```console
-  gh issue list --state open --search 'no:assignee -label:"Delegated to AI agent"' --limit 20
+  gh issue list --state open --search 'no:assignee -label:"Delegated to AI agent" sort:created-asc' --limit 1
   ```
 
 - Read the title, body, comments and linked issues or PRs. Decide whether it is a **bug** or a
@@ -27,20 +36,28 @@ Take one issue from open to pull request. Use the `gh` CLI for everything on Git
 Create the label if it is missing, then add it, so nobody else picks the issue up:
 
 ```console
-gh label create "Delegated to AI agent" --color 5319E7 --description "Picked up by an AI agent" 2>/dev/null || true
+gh label list --search "Delegated to AI agent" --json name --jq '.[].name' | grep -qx "Delegated to AI agent" \
+  || gh label create "Delegated to AI agent" --color 5319E7 --description "Picked up by an AI agent"
 gh issue edit <number> --add-label "Delegated to AI agent"
+```
+
+If any command fails, stop and report the error. If you stop at any later step without opening
+a PR, release the issue so someone else can pick it up:
+
+```console
+gh issue edit <number> --remove-label "Delegated to AI agent"
 ```
 
 ## 3. Branch
 
-Start from an up-to-date default branch:
+The tree is clean (step 0). Start from an up-to-date default branch:
 
 ```console
 git switch main && git pull --ff-only
 git switch -c issue-<number>-<short-slug>
 ```
 
-If the working tree has uncommitted changes, stop and ask the user first.
+Install the dependencies so the tests in step 5 can run: `npm ci`.
 
 ## 4. Understand the code
 
@@ -80,12 +97,14 @@ If something fails, fix it. Do not open the PR with failing checks.
 ## 8. Commit and open the PR
 
 - Commit with a message that says what changed and why, and references the issue.
+- Write the PR body to a file outside the repository, for example `/tmp/pr-body.md`. Do not pass
+  it inline with `--body`: it has several lines, and the shell would run anything in backticks.
 - Push and open the PR against `main`. `Fixes #<number>` closes the issue on merge:
 
   ```console
   git push -u origin HEAD
   gh pr create --base main --label "Delegated to AI agent" \
-    --title "<short summary>" --body "<body>"
+    --title "<short summary>" --body-file /tmp/pr-body.md
   ```
 
 - The body has:
