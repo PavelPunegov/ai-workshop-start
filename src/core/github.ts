@@ -3,12 +3,13 @@ import { SKILL_ROOTS } from './find.ts';
 import type { Source } from './scan.ts';
 
 /** The part of `fetch` the core uses, so tests and the browser can pass their own. */
-export type Fetch = (url: string, init?: { headers?: Record<string, string> }) => Promise<Response>;
+export type Fetch = (url: string, init?: { headers?: Record<string, string>; signal?: AbortSignal }) => Promise<Response>;
 
 export type GitHubOptions = {
   fetch: Fetch;
   /** With a token, skills are found through code search; without it, through the tree. */
   token?: string;
+  signal?: AbortSignal;
 };
 
 const API = 'https://api.github.com';
@@ -18,6 +19,28 @@ const RAW = 'https://raw.githubusercontent.com';
 export function parseGitHubUrl(input: string): { owner: string; repo: string } | undefined {
   const match = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(input.trim());
   return match ? { owner: match[1], repo: match[2] } : undefined;
+}
+
+/** An organization profile URL; repository URLs keep their existing meaning. */
+export function parseGitHubOrganizationUrl(input: string): string | undefined {
+  return /^(?:https?:\/\/)?(?:www\.)?github\.com\/([\w-]+)\/?$/i.exec(input.trim())?.[1];
+}
+
+export type Organization = { id: string; url: string; repositories: string[] };
+
+/** All repositories visible to the current credentials, including forks and archived projects. */
+export async function openOrganization(input: string, options: GitHubOptions): Promise<Organization> {
+  const owner = parseGitHubOrganizationUrl(input);
+  if (!owner) throw new AtlasError(`Not a GitHub organization URL: ${input}`);
+  const github = client(options);
+  const { login } = await github.json<{ login: string }>(`${API}/orgs/${owner}`, `Organization not found: https://github.com/${owner}`);
+  const repositories = new Set<string>();
+  for (let page = 1; ; page++) {
+    const items = await github.json<{ full_name: string }[]>(`${API}/orgs/${login}/repos?type=all&per_page=100&page=${page}`);
+    for (const item of items) repositories.add(item.full_name);
+    if (items.length < 100) break;
+  }
+  return { id: login, url: `https://github.com/${login}`, repositories: [...repositories].sort() };
 }
 
 /** Resolves the default branch to a commit and lists the files that may be skills. */
@@ -30,9 +53,9 @@ export async function openGitHub(input: string, options: GitHubOptions): Promise
     `Repository not found: https://github.com/${name.owner}/${name.repo}`,
   );
   const id = info.full_name;
-  const { sha } = await github.json<{ sha: string }>(`${API}/repos/${id}/commits/${encodePath(info.default_branch)}`);
+  const sha = await defaultCommit(github, id, info.default_branch);
   const warnings: string[] = [];
-  const paths = options.token ? await searchPaths(github, id) : await treePaths(github, id, sha, warnings);
+  const paths = !sha ? [] : options.token ? await searchPaths(github, id) : await treePaths(github, id, sha, warnings);
   const [organization, repo] = id.split('/');
   return {
     repository: { id, organization, name: repo, url: `https://github.com/${id}`, commit: sha },
@@ -40,6 +63,15 @@ export async function openGitHub(input: string, options: GitHubOptions): Promise
     warnings,
     read: (path) => github.raw(`${RAW}/${id}/${sha}/${encodePath(path)}`),
   };
+}
+
+async function defaultCommit(github: Client, id: string, branch: string): Promise<string> {
+  try {
+    return (await github.json<{ sha: string }>(`${API}/repos/${id}/commits/${encodePath(branch)}`)).sha;
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 409 && /Git Repository is empty/i.test(error.message)) return '';
+    throw error;
+  }
 }
 
 /** Code search looks at the whole default branch, 100 results a page. */
@@ -92,14 +124,23 @@ function files(tree: Tree): string[] {
 
 type Client = ReturnType<typeof client>;
 
-function client({ fetch, token }: GitHubOptions) {
+class GitHubError extends AtlasError {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function client({ fetch, token, signal }: GitHubOptions) {
   const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
   if (token) headers.Authorization = `Bearer ${token}`;
   const answers = new Map<string, Promise<unknown>>(); // the root tree is asked for once per skill root
 
   async function get(url: string, init?: { headers: Record<string, string> }): Promise<Response> {
     try {
-      return await fetch(url, init);
+      signal?.throwIfAborted();
+      return await fetch(url, { ...init, signal });
     } catch (error) {
       throw new AtlasError(`Cannot reach GitHub: ${describe(error)}`);
     }
@@ -111,12 +152,12 @@ function client({ fetch, token }: GitHubOptions) {
     const body: unknown = await response.json().catch(() => undefined);
     const message = (body as { message?: unknown } | undefined)?.message;
     const text = typeof message === 'string' ? message : '';
-    if (response.status === 404) throw new AtlasError(notFound);
+    if (response.status === 404) throw new GitHubError(notFound, response.status);
     if ((response.status === 403 || response.status === 429) && /rate limit/i.test(text)) {
-      throw new AtlasError(`GitHub rate limit reached; ${token ? 'try again in a minute' : 'set GITHUB_TOKEN'}`);
+      throw new GitHubError(`GitHub rate limit reached; ${token ? 'try again in a minute' : 'set GITHUB_TOKEN'}`, response.status);
     }
-    if (response.status === 401) throw new AtlasError('GitHub rejected the token in GITHUB_TOKEN');
-    throw new AtlasError(`GitHub answered ${response.status} for ${url}${text && `: ${text}`}`);
+    if (response.status === 401) throw new GitHubError('GitHub rejected the token in GITHUB_TOKEN', response.status);
+    throw new GitHubError(`GitHub answered ${response.status} for ${url}${text && `: ${text}`}`, response.status);
   }
 
   return {
@@ -127,7 +168,7 @@ function client({ fetch, token }: GitHubOptions) {
     },
     /** A file's bytes at the scanned commit, or undefined if it is not there. */
     async raw(url: string): Promise<Uint8Array | undefined> {
-      const response = await get(url);
+      const response = await get(url, { headers });
       if (response.status === 404) return undefined;
       if (!response.ok) throw new AtlasError(`GitHub answered ${response.status} for ${url}`);
       return new Uint8Array(await response.arrayBuffer());

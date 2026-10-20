@@ -2,13 +2,15 @@
 // through `escape`; nothing here knows about HTTP.
 import { skillLink, type Repository, type Skill } from '../core/model.ts';
 import type { ScanResult } from '../core/scan.ts';
-import { AGENT_FOLDER_NAMES, countSkills, firstSentence, isOutside } from '../present.ts';
+import type { OrganizationResult } from '../core/organization.ts';
+import { AGENT_FOLDER_NAMES, countSkills, countProjects, firstSentence, isOutside, organizationSkillCount } from '../present.ts';
 
 /** What the page shows: the form alone, a scan's result, or an error. */
-export type Page = { input?: string; filter?: string; result?: ScanResult; error?: string };
+export type Page = { input?: string; filter?: string; result?: ScanResult; organization?: OrganizationResult; error?: string };
 
-export function renderPage({ input = '', filter = '', result, error }: Page): string {
-  const title = result ? `${result.repository.id} · Skill Atlas` : 'Skill Atlas';
+export function renderPage(page: Page): string {
+  const { input = '', result, organization } = page;
+  const title = result ? `${result.repository.id} · Skill Atlas` : organization ? `${organization.organization.id} · Skill Atlas` : 'Skill Atlas';
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -16,28 +18,63 @@ export function renderPage({ input = '', filter = '', result, error }: Page): st
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)}</title>
 <style>${STYLE}</style>
+<script src="/client.js" defer></script>
 </head>
 <body>
 <main>
 <h1>🧭 Skill Atlas</h1>
-<p class="muted">Every <code>SKILL.md</code> in a GitHub repository: its name, description and link.</p>
+<p class="muted">Every <code>SKILL.md</code> in a GitHub repository or organization: its name, description and link.</p>
 <form method="get" action="/">
-<label for="repo">🔎 Repository</label>
+<label for="repo">🔎 Repository or organization</label>
 <input id="repo" name="repo" type="text" value="${escape(input)}" placeholder="https://github.com/owner/repo" required autofocus>
 <button type="submit">Scan</button>
 </form>
-${error ? `<div class="error" role="alert">❌ ${escape(error)}</div>\n` : ''}${result ? renderResult(result, input, filter) : ''}
+<section id="scan-progress" hidden aria-live="polite">
+<label for="scan-meter" id="scan-status">Listing projects…</label>
+<progress id="scan-meter" aria-labelledby="scan-status"></progress>
+</section>
+<div id="scan-output" aria-live="polite">${renderOutput(page)}</div>
 </main>
 </body>
 </html>
 `;
 }
 
-function renderResult({ repository, skills, warnings }: ScanResult, input: string, filter: string): string {
+/** A fragment for both the server page and the live scan's final event. */
+export function renderOutput({ input = '', filter = '', result, organization, error }: Page): string {
+  if (error) return `<div class="error" role="alert">❌ ${escape(error)}</div>\n`;
+  if (organization) return renderOrganization(organization, input, filter);
+  return result ? renderResult(result, input, filter) : '';
+}
+
+function matchingSkills(skills: Skill[], filter: string): Skill[] {
   const query = filter.trim().toLowerCase();
-  const matches = skills.filter((skill) =>
+  return skills.filter((skill) =>
     [skill.name, skill.description, skill.path, ...skill.copies].some((text) => text.toLowerCase().includes(query)),
   );
+}
+
+function renderOrganization({ organization, projects }: OrganizationResult, input: string, filter: string): string {
+  const total = organizationSkillCount(projects);
+  const shown = projects.reduce((count, project) => count + matchingSkills(project.skills, filter).length, 0);
+  return [
+    `<section class="organization"><h2>🏢 <a href="${escape(organization.url)}">${escape(organization.id)}</a> · ${countProjects(projects.length)} · ${countSkills(total)}</h2></section>\n`,
+    `<p class="progress">Scan complete: ${projects.length}/${projects.length} projects <progress value="${projects.length || 1}" max="${projects.length || 1}" aria-label="Projects scanned"></progress></p>\n`,
+    total ? renderFilter(input, filter, shown, total) : '',
+    projects.length ? projects.map((project) => renderProject(project, filter)).join('') : '<p class="empty">No repositories in this organization.</p>\n',
+  ].join('');
+}
+
+function renderProject({ repository, skills, warnings }: ScanResult, filter: string): string {
+  const matches = matchingSkills(skills, filter);
+  return `<details class="project">
+<summary>📦 ${escape(repository.id)} · ${countSkills(skills.length)}</summary>
+${renderHeader(repository, skills.length)}${renderWarnings(warnings)}${skills.length && !matches.length ? '<p class="empty">No skills match this filter.</p>\n' : renderSkills(repository, matches)}
+</details>\n`;
+}
+
+function renderResult({ repository, skills, warnings }: ScanResult, input: string, filter: string): string {
+  const matches = matchingSkills(skills, filter);
   return [
     renderHeader(repository, skills.length),
     renderWarnings(warnings),
@@ -125,4 +162,8 @@ button { font: inherit; padding: 0.5rem 1rem; border: 0; border-radius: 0.375rem
 .skill { border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.75rem 1rem; }
 .skill p, .skill h3 { margin: 0.25rem 0; }
 .path, .copies, .outside { font-size: 0.9rem; color: var(--muted); }
+.project { border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.75rem 1rem; margin: 0.75rem 0; }
+summary { cursor: pointer; font-weight: 600; }
+progress { display: block; width: 100%; margin: 0.5rem 0; }
+@media (max-width: 40rem) { form { flex-wrap: wrap; } label { width: 100%; } input { min-width: 0; } }
 `;

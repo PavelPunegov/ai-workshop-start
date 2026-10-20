@@ -155,10 +155,10 @@ test('malformed input → an error message, status 400, nothing fetched', async 
     opened = true;
     return openDirectory(input);
   });
-  for (const input of ['not a link', '../fixture', 'https://gitlab.com/JetBrains/kotlin', 'https://github.com/JetBrains']) {
+  for (const input of ['not a link', '../fixture', 'https://gitlab.com/JetBrains/kotlin', 'https://github.com/JetBrains/repo/tree/main']) {
     const result = await page(input);
     assert.equal(result.status, 400, input);
-    assert.match(result.html, /<div class="error" role="alert">❌ Not a GitHub repository URL: /, input);
+    assert.match(result.html, /<div class="error" role="alert">❌ Not a GitHub repository or organization URL: /, input);
     assert.doesNotMatch(result.html, /class="skills"/, input);
   }
   assert.equal(opened, false);

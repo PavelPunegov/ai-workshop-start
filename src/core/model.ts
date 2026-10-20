@@ -6,7 +6,7 @@ export type Repository = {
   name: string;
   /** `https://github.com/<owner>/<repo>`, or a local directory's file:// URL. */
   url: string;
-  /** The scanned commit; empty for a local directory. */
+  /** The scanned commit; empty for a local directory or a GitHub repository with no commits. */
   commit: string;
 };
 
