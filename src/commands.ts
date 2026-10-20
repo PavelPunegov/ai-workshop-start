@@ -2,7 +2,7 @@
 // terminal: everything that differs between them comes in through the context.
 import { AtlasError } from './core/errors.ts';
 import { AGENT_FOLDERS, isInsideAgentFolders } from './core/find.ts';
-import { skillLink, type Repository, type Skill } from './core/model.ts';
+import { firstSentence, skillLink, type Repository, type Skill } from './core/model.ts';
 import { scan, type Source } from './core/scan.ts';
 
 export type Context = {
@@ -53,9 +53,4 @@ function printRepository(repository: Repository, skills: Skill[], { print }: Con
     // The main copy is in .agents or .claude whenever any copy is.
     if (!isInsideAgentFolders(skill.path)) print(`  outside ${AGENT_FOLDERS.join(' and ')}`);
   }
-}
-
-function firstSentence(text: string): string {
-  const line = text.replace(/\s+/g, ' ').trim();
-  return /^.*?[.!?](?=\s|$)/.exec(line)?.[0] ?? line;
 }
