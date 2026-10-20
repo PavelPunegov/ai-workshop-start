@@ -1,6 +1,19 @@
 // How a list of skills is shown, the same in every client: the CLI and the web page.
 import { AGENT_FOLDERS, isInsideAgentFolders } from './core/find.ts';
 import type { Skill } from './core/model.ts';
+import type { OrganizationResult } from './core/organization.ts';
+
+export function organizationSummary({ organization, projects }: OrganizationResult): string {
+  return `${organization.id} · ${countProjects(projects.length)} · ${countSkills(organizationSkillCount(projects))}`;
+}
+
+export function organizationSkillCount(projects: OrganizationResult['projects']): number {
+  return projects.reduce((total, project) => total + project.skills.length, 0);
+}
+
+export function countProjects(count: number): string {
+  return `${count} ${count === 1 ? 'project' : 'projects'}`;
+}
 
 /** `1 skill`, `4 skills`: a count of skills, not of copies. */
 export function countSkills(count: number): string {

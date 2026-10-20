@@ -1,6 +1,6 @@
 # Repository analysis
 ## Input
-A **GitHub repository** URL, or a local directory
+A **GitHub repository or organization** URL, or a local directory
 ## Output
 Every `SKILL.md`: **name**, **description**, **link**
 ## Architecture
@@ -15,3 +15,18 @@ Skill: id = `repo:path`, name, description, commit
 - Identical skills are *one skill*: byte-identical SKILL.md files. The main copy is the first in
   `.agents` or `.claude`, else the first by path; the others are its *copies*
 - A skill with no copy in `.agents` or `.claude` is marked as *outside* them
+## Organizations
+- `https://github.com/<organization>` scans every repository visible to the supplied credentials,
+  including forks and archived repositories. Use the organization API, following every page of
+  repositories; no clone. A user profile is not an organization.
+- Organization URLs accept the same optional scheme, `www.` prefix and trailing slash as repository
+  URLs. Query strings, fragments and extra path segments are not accepted.
+- Summarize the number of projects and the sum of their unique skill counts. Deduplicate copies
+  within each project; identical skills in different projects count separately.
+- Sort projects by full repository name. Scan sequentially; report completed/total projects after
+  listing and after each project. Keep the existing repository scan and skill presentation rules.
+- Include repositories without skills and empty Git repositories (no commit yet). An organization
+  without visible repositories has zero projects and zero skills.
+- A missing organization, inaccessible repository, authentication failure or rate limit stops the
+  scan with a clear error. Do not present incomplete totals as a successful organization summary.
+- Nothing is stored; authenticated requests, including skill file reads, use `GITHUB_TOKEN`.
