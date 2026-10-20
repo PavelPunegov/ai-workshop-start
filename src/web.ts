@@ -40,7 +40,7 @@ export async function respond(url: URL, method: string | undefined, services: Re
     return { status: 400, page: { input, error: `Not a GitHub repository URL: ${input}. Expected https://github.com/<owner>/<repo>` } };
   }
   try {
-    return { status: 200, page: { input, result: await scan(await services.open(input)) } };
+    return { status: 200, page: { input, filter: url.searchParams.get('filter') ?? '', result: await scan(await services.open(input)) } };
   } catch (error) {
     const status = statusOf(error);
     if (status === 500) services.log(error);

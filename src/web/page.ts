@@ -5,9 +5,9 @@ import type { ScanResult } from '../core/scan.ts';
 import { AGENT_FOLDER_NAMES, countSkills, firstSentence, isOutside } from '../present.ts';
 
 /** What the page shows: the form alone, a scan's result, or an error. */
-export type Page = { input?: string; result?: ScanResult; error?: string };
+export type Page = { input?: string; filter?: string; result?: ScanResult; error?: string };
 
-export function renderPage({ input = '', result, error }: Page): string {
+export function renderPage({ input = '', filter = '', result, error }: Page): string {
   const title = result ? `${result.repository.id} · Skill Atlas` : 'Skill Atlas';
   return `<!doctype html>
 <html lang="en">
@@ -26,15 +26,37 @@ export function renderPage({ input = '', result, error }: Page): string {
 <input id="repo" name="repo" type="text" value="${escape(input)}" placeholder="https://github.com/owner/repo" required autofocus>
 <button type="submit">Scan</button>
 </form>
-${error ? `<div class="error" role="alert">❌ ${escape(error)}</div>\n` : ''}${result ? renderResult(result) : ''}
+${error ? `<div class="error" role="alert">❌ ${escape(error)}</div>\n` : ''}${result ? renderResult(result, input, filter) : ''}
 </main>
 </body>
 </html>
 `;
 }
 
-function renderResult({ repository, skills, warnings }: ScanResult): string {
-  return [renderHeader(repository, skills.length), renderWarnings(warnings), renderSkills(repository, skills)].join('');
+function renderResult({ repository, skills, warnings }: ScanResult, input: string, filter: string): string {
+  const query = filter.trim().toLowerCase();
+  const matches = skills.filter((skill) =>
+    [skill.name, skill.description, skill.path, ...skill.copies].some((text) => text.toLowerCase().includes(query)),
+  );
+  return [
+    renderHeader(repository, skills.length),
+    renderWarnings(warnings),
+    skills.length ? renderFilter(input, filter, matches.length, skills.length) : '',
+    skills.length && !matches.length ? '<p class="empty">No skills match this filter.</p>\n' : renderSkills(repository, matches),
+  ].join('');
+}
+
+function renderFilter(input: string, filter: string, shown: number, total: number): string {
+  const clearUrl = `/?${new URLSearchParams({ repo: input })}`;
+  return `<form method="get" action="/">
+<input type="hidden" name="repo" value="${escape(input)}">
+<label for="filter">Filter skills</label>
+<input id="filter" name="filter" type="search" value="${escape(filter)}" placeholder="Name, description or path" aria-describedby="filter-count">
+<button type="submit">Filter</button>
+<a href="${escape(clearUrl)}">Clear filter</a>
+</form>
+<p class="filter-count" id="filter-count">Showing ${shown} of ${countSkills(total)}</p>
+`;
 }
 
 /** The repository, linked; the count of skills; the scanned commit, short. */
