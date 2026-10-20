@@ -44,16 +44,43 @@ test('./fixture: every skill, sorted by name, linked to its file, with a warning
   assert.equal(
     fixture.stdout,
     [
-      'fixture · 3 skills',
+      'fixture · 4 skills',
       "code-style — Follow the project's code style.",
       `  ${root}/.github/skills/code-style/SKILL.md`,
+      '  outside .agents and .claude',
+      "code-style — Format the plugin's Kotlin sources.",
+      `  ${root}/plugins/tools/skills/code-style/SKILL.md`,
+      '  outside .agents and .claude',
       'commits — Write commit messages the way this repository does.',
-      `  ${root}/.claude/skills/commits/SKILL.md`,
+      `  ${root}/.agents/skills/commits/SKILL.md`,
+      '  also in .claude/skills/commits/SKILL.md, plugins/tools/skills/commits/SKILL.md',
       'release-checklist',
       `  ${root}/.agents/skills/release-checklist/SKILL.md`,
     ].join('\n'),
   );
   assert.match(fixture.stderr, /^warning: \.agents\/skills\/release-checklist\/SKILL\.md: malformed front matter: /);
+});
+
+test('identical skills → one skill, the copy in .agents or .claude first, the others under `also in`', () => {
+  const lines = fixture.stdout.split('\n');
+  const commits = lines.findIndex((line) => line.startsWith('commits — '));
+  assert.equal(lines.filter((line) => line.startsWith('commits')).length, 1);
+  assert.match(lines[commits + 1], /\/\.agents\/skills\/commits\/SKILL\.md$/);
+  assert.equal(lines[commits + 2], '  also in .claude/skills/commits/SKILL.md, plugins/tools/skills/commits/SKILL.md');
+  // The same name, a different file: two skills, no copies.
+  assert.equal(lines.filter((line) => line.startsWith('code-style — ')).length, 2);
+  assert.doesNotMatch(fixture.stdout, /also in .*code-style/);
+});
+
+test('a skill with no copy in .agents or .claude → marked as outside them', () => {
+  const lines = fixture.stdout.split('\n');
+  const outside = lines.flatMap((line, index) => (line === '  outside .agents and .claude' ? [lines[index - 1]] : []));
+  assert.deepEqual(
+    outside.map((link) => link.replace(/^.*\/fixture\//, '')),
+    ['.github/skills/code-style/SKILL.md', 'plugins/tools/skills/code-style/SKILL.md'],
+  );
+  // commits has a copy in plugins/, but its main copy is in .agents: not marked.
+  assert.equal(outside.some((link) => link.includes('/commits/')), false);
 });
 
 test('the CLI prints the result at once and stores nothing', (t) => {

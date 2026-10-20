@@ -1,6 +1,7 @@
 // The skill-atlas commands. The same code serves the Node CLI and the browser
 // terminal: everything that differs between them comes in through the context.
 import { AtlasError } from './core/errors.ts';
+import { AGENT_FOLDERS, isInsideAgentFolders } from './core/find.ts';
 import { skillLink, type Repository, type Skill } from './core/model.ts';
 import { scan, type Source } from './core/scan.ts';
 
@@ -39,13 +40,18 @@ async function scanCommand(args: string[], context: Context) {
   for (const warning of result.warnings) context.error(`warning: ${warning}`);
 }
 
-/** `<owner>/<repo> · N skills`, then each skill's name, first sentence and link. */
+/**
+ * `<owner>/<repo> · N skills`, then each skill's name, first sentence and link, its copies,
+ * and whether it is outside .agents and .claude.
+ */
 function printRepository(repository: Repository, skills: Skill[], { print }: Context) {
   print(`${repository.id} · ${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`);
   for (const skill of skills) {
     print(skill.description ? `${skill.name} — ${firstSentence(skill.description)}` : skill.name);
     print(`  ${skillLink(repository, skill)}`);
     if (skill.copies.length > 0) print(`  also in ${skill.copies.join(', ')}`);
+    // The main copy is in .agents or .claude whenever any copy is.
+    if (!isInsideAgentFolders(skill.path)) print(`  outside ${AGENT_FOLDERS.join(' and ')}`);
   }
 }
 

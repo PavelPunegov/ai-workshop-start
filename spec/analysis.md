@@ -12,3 +12,6 @@ Skill: id = `repo:path`, name, description, commit
 - The link pins the *scanned commit*
 - Malformed front matter → a *warning*, the scan goes on
 - Unreachable repository → a clear message, exit code 1
+- Identical skills are *one skill*: byte-identical SKILL.md files. The main copy is the first in
+  `.agents` or `.claude`, else the first by path; the others are its *copies*
+- A skill with no copy in `.agents` or `.claude` is marked as *outside* them

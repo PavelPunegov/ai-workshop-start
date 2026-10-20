@@ -9,4 +9,5 @@ build-tools-bump-gradle-api — Bumps the Gradle API…
   https://github.com/JetBrains/kotlin/blob/<commit>/…
 ```
 - Sorted by **name**; the description's *first sentence*
-- `also in <paths>` for copies; warnings go to *stderr*
+- The count is of skills, not of copies
+- `also in <paths>` for copies; `outside .agents and .claude` when it is; warnings go to *stderr*
