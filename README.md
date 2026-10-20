@@ -21,7 +21,11 @@ $ npm start
 Skill Atlas: http://localhost:3000
 ```
 
-Open it, paste a GitHub link, get the skills. Behind an HTTP proxy, set `NODE_USE_ENV_PROXY=1` so
+Open it, paste a GitHub link, get the skills. Use **Filter skills** to search names, full descriptions,
+and paths (including copies), ignoring case. Submit with **Filter**; **Clear filter** shows all skills.
+Each submission scans the repository again; the filtered URL can be bookmarked or shared.
+
+Behind an HTTP proxy, set `NODE_USE_ENV_PROXY=1` so
 Node's `fetch` uses `HTTPS_PROXY`; otherwise the page answers `Cannot reach GitHub: fetch failed`.
 
 Set `GITHUB_TOKEN` for a higher GitHub rate limit. `npm test` runs the tests.

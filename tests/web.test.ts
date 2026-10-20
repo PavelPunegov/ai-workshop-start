@@ -55,6 +55,7 @@ test('a repository link → the repository, its count, its commit, and each skil
   assert.ok(page.html.includes('title="Write commit messages the way this repository does. Use for every commit."'));
   assert.deepEqual(texts(page.html, 'copies'), []);
   assert.deepEqual(texts(page.html, 'outside'), []);
+  assert.deepEqual(texts(page.html, 'filter-count'), ['Showing 1 of 1 skill']);
   // The input keeps what was typed.
   assert.ok(page.html.includes('value="https://github.com/JetBrains/example"'));
 });
@@ -78,6 +79,74 @@ test('skills sorted by name, with copies, outside .agents and .claude, and warni
   assert.equal(texts(page.html, 'description').at(-1), 'No description');
   const [warnings] = texts(page.html, 'warnings');
   assert.match(warnings, /⚠️ Warnings\s+\.agents\/skills\/release-checklist\/SKILL\.md: malformed front matter: /);
+});
+
+test('the filter form keeps the repository and offers a clear link', async () => {
+  const page = await fixture('https://github.com/JetBrains/fixture', '/?filter=commits');
+  assert.match(page.html, /<label for="filter">Filter skills<\/label>/);
+  assert.match(page.html, /<input type="hidden" name="repo" value="https:\/\/github.com\/JetBrains\/fixture">/);
+  assert.match(page.html, /<input id="filter" name="filter" type="search" value="commits"/);
+  assert.match(page.html, /<button type="submit">Filter<\/button>/);
+  assert.match(page.html, /href="\/\?repo=https%3A%2F%2Fgithub.com%2FJetBrains%2Ffixture">Clear filter<\/a>/);
+  assert.deepEqual(texts(page.html, 'copies'), [
+    '🪞 Also in .claude/skills/commits/SKILL.md, plugins/tools/skills/commits/SKILL.md',
+  ]);
+  const clearUrl = page.html.match(/<a href="([^"\n]+)">Clear filter<\/a>/)![1];
+  const cleared = await fixture(undefined, clearUrl.replaceAll('&amp;', '&'));
+  assert.equal(texts(cleared.html, 'name').length, 4);
+  assert.match(cleared.html, /id="filter" name="filter" type="search" value=""/);
+  const repositoryForm = page.html.match(/<form[\s\S]*?<\/form>/)![0];
+  assert.doesNotMatch(repositoryForm, /name="filter"/);
+});
+
+test('filtering retains the scanned commit and uses the full description', async () => {
+  const page = await live('https://github.com/JetBrains/example', '/?filter=USE%20FOR%20EVERY');
+  assert.equal(page.status, 200);
+  assert.deepEqual(texts(page.html, 'name'), ['🧩 commits']);
+  assert.match(texts(page.html, 'repository')[0], new RegExp(EXAMPLE_COMMIT.slice(0, 7)));
+  assert.ok(page.html.includes(`/blob/${EXAMPLE_COMMIT}/.claude/skills/commits/SKILL.md`));
+});
+
+test('filter matches names, full descriptions and primary or copy paths, ignoring case and surrounding whitespace', async () => {
+  const cases: [string, string[]][] = [
+    ['  CoDe-StYlE  ', ['🧩 code-style', '🧩 code-style']],
+    ['KOTLIN OR JAVA', ['🧩 code-style']],
+    ['plugins/tools/skills/code-style', ['🧩 code-style']],
+    ['.claude/skills/commits', ['🧩 commits']],
+    ['release-checklist', ['🧩 release-checklist']],
+    ['', ['🧩 code-style', '🧩 code-style', '🧩 commits', '🧩 release-checklist']],
+    ['   ', ['🧩 code-style', '🧩 code-style', '🧩 commits', '🧩 release-checklist']],
+  ];
+  for (const [filter, expected] of cases) {
+    const page = await fixture('https://github.com/JetBrains/fixture', `/?filter=${encodeURIComponent(filter)}`);
+    assert.equal(page.status, 200);
+    assert.deepEqual(texts(page.html, 'name'), expected, filter);
+    assert.deepEqual(texts(page.html, 'filter-count'), [`Showing ${expected.length} of 4 skills`]);
+    assert.match(texts(page.html, 'repository')[0], /4 skills/);
+    assert.match(texts(page.html, 'warnings')[0], /malformed front matter/);
+  }
+});
+
+test('no matches is different from a repository without skills', async () => {
+  const page = await fixture('https://github.com/JetBrains/fixture', '/?filter=nonexistent');
+  assert.deepEqual(texts(page.html, 'name'), []);
+  assert.deepEqual(texts(page.html, 'filter-count'), ['Showing 0 of 4 skills']);
+  assert.deepEqual(texts(page.html, 'empty'), ['No skills match this filter.']);
+  const empty = await serve(async () => ({ ...(await openDirectory(FIXTURE)), paths: [] }));
+  const result = await empty('https://github.com/JetBrains/empty', '/?filter=commits');
+  assert.deepEqual(texts(result.html, 'empty'), ['🫙 No SKILL.md in this repository.']);
+  assert.doesNotMatch(result.html, /id="filter"/);
+});
+
+test('filter input is literal text and is escaped in the form', async () => {
+  const filter = '\"><script>alert(1)</script>&';
+  const page = await fixture('https://github.com/JetBrains/fixture', `/?filter=${encodeURIComponent(filter)}`);
+  assert.equal(page.status, 200);
+  assert.doesNotMatch(page.html, /<script>/);
+  assert.ok(page.html.includes('value="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&amp;"'));
+  assert.deepEqual(texts(page.html, 'name'), []);
+  const literal = await fixture('https://github.com/JetBrains/fixture', '/?filter=.*');
+  assert.deepEqual(texts(literal.html, 'name'), []);
 });
 
 test('malformed input → an error message, status 400, nothing fetched', async () => {
