@@ -8,12 +8,12 @@ import { openGitHub } from '../src/core/github.ts';
 import { replay } from '../src/core/replay.ts';
 import type { Source } from '../src/core/scan.ts';
 import { openDirectory } from '../src/local.ts';
-import { createWebServer } from '../src/web.ts';
+import { createWebServer, respond } from '../src/web.ts';
 import { EXAMPLE_COMMIT, FIXTURE, github } from './helpers.ts';
 
 /** A running server; `get(repo)` asks the page for that repository link. */
-async function serve(open: (input: string) => Promise<Source>) {
-  const server = createWebServer({ open });
+async function serve(open: (input: string) => Promise<Source>, log?: (error: unknown) => void) {
+  const server = createWebServer({ open, log });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   after(() => server.close());
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -110,6 +110,32 @@ test('unreachable repository → an error message, status 502', async () => {
   const missing = await notFound('https://github.com/JetBrains/no-such-repository');
   assert.equal(missing.status, 502);
   assert.deepEqual(texts(missing.html, 'error'), ['❌ Repository not found: https://github.com/JetBrains/no-such-repository']);
+});
+
+test('any other failure → a generic message, status 500, the details in the server log', async () => {
+  const logged: unknown[] = [];
+  const broken = await serve(async () => {
+    throw new Error('internal detail: /srv/secret');
+  }, (error) => logged.push(error));
+  const page = await broken('https://github.com/JetBrains/example');
+  assert.equal(page.status, 500);
+  assert.deepEqual(texts(page.html, 'error'), ['❌ Something went wrong; the details are in the server log.']);
+  assert.doesNotMatch(page.html, /internal detail/);
+  assert.equal(logged.length, 1);
+  assert.equal((logged[0] as Error).message, 'internal detail: /srv/secret');
+});
+
+test('respond: the status and the page, without a socket', async () => {
+  const services = { open: () => openDirectory(FIXTURE), log: () => assert.fail('nothing to log') };
+  const answer = (path: string, method = 'GET') => respond(new URL(path, 'http://localhost'), method, services);
+  assert.deepEqual(await answer('/'), { status: 200, page: {} });
+  assert.deepEqual(await answer('/?repo=%20'), { status: 200, page: {} });
+  assert.equal((await answer('/?repo=nope')).status, 400);
+  assert.equal((await answer('/', 'POST')).status, 404);
+  const scanned = await answer('/?repo=github.com/JetBrains/fixture');
+  assert.equal(scanned.status, 200);
+  assert.equal(scanned.page.input, 'github.com/JetBrains/fixture');
+  assert.equal(scanned.page.result?.skills.length, 4);
 });
 
 test('what the user typed is escaped, never markup', async () => {

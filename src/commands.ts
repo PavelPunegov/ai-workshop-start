@@ -1,9 +1,9 @@
 // The skill-atlas commands. The same code serves the Node CLI and the browser
 // terminal: everything that differs between them comes in through the context.
 import { AtlasError } from './core/errors.ts';
-import { AGENT_FOLDERS, isInsideAgentFolders } from './core/find.ts';
-import { firstSentence, skillLink, type Repository, type Skill } from './core/model.ts';
+import { skillLink, type Repository, type Skill } from './core/model.ts';
 import { scan, type Source } from './core/scan.ts';
+import { AGENT_FOLDER_NAMES, countSkills, firstSentence, isOutside } from './present.ts';
 
 export type Context = {
   /** Opens what the user asked to scan. */
@@ -45,12 +45,11 @@ async function scanCommand(args: string[], context: Context) {
  * and whether it is outside .agents and .claude.
  */
 function printRepository(repository: Repository, skills: Skill[], { print }: Context) {
-  print(`${repository.id} · ${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`);
+  print(`${repository.id} · ${countSkills(skills.length)}`);
   for (const skill of skills) {
     print(skill.description ? `${skill.name} — ${firstSentence(skill.description)}` : skill.name);
     print(`  ${skillLink(repository, skill)}`);
     if (skill.copies.length > 0) print(`  also in ${skill.copies.join(', ')}`);
-    // The main copy is in .agents or .claude whenever any copy is.
-    if (!isInsideAgentFolders(skill.path)) print(`  outside ${AGENT_FOLDERS.join(' and ')}`);
+    if (isOutside(skill)) print(`  outside ${AGENT_FOLDER_NAMES}`);
   }
 }

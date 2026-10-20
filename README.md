@@ -13,8 +13,16 @@ build-tools-bump-gradle-api — Bumps the Gradle API version that Kotlin Gradle 
 …
 ```
 
-`npm start` serves the same list as a web page at http://localhost:3000: paste a GitHub link, get
-the skills.
+Or as a web page (Node 24+; `PORT`, default 3000):
+
+```console
+$ npm ci
+$ npm start
+Skill Atlas: http://localhost:3000
+```
+
+Open it, paste a GitHub link, get the skills. Behind an HTTP proxy, set `NODE_USE_ENV_PROXY=1` so
+Node's `fetch` uses `HTTPS_PROXY`; otherwise the page answers `Cannot reach GitHub: fetch failed`.
 
 Set `GITHUB_TOKEN` for a higher GitHub rate limit. `npm test` runs the tests.
 
