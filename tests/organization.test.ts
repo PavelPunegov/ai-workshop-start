@@ -68,6 +68,10 @@ test('organization web page: summary, collapsed projects including empty ones, a
   assert.match(html, /Also in/);
   assert.match(html, /abc1234/);
   assert.match(html, /<progress[^>]*value="3"[^>]*max="3"/);
+  // Projects are folders in one Skills tree; ids stay unique and only the first row starts selected.
+  assert.match(html, /<aside class="tool-window" aria-label="Skills">\s*<div class="tool-window-title">Skills<\/div>\s*<section class="organization">/);
+  assert.deepEqual([...html.matchAll(/name="skill" id="(skill-\d+)"( checked)?/g)].map((match) => match[1] + (match[2] ?? '')), ['skill-0 checked', 'skill-1']);
+  assert.match(html, /<div class="status-bar"><span>Skill Atlas › Acme<\/span><span>3 projects · 2 skills<\/span><\/div>/);
   const filtered = await fetch(`${base}/?repo=github.com/Acme&filter=nonexistent`).then((r) => r.text());
   assert.match(filtered, /Showing 0 of 2 skills/);
   assert.match(filtered, /No skills match this filter/);

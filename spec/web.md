@@ -7,20 +7,31 @@ With no `repo` parameter, show the start form without an error (status *200*).
 `GITHUB_TOKEN`, optional: as for the CLI.
 ## Site header
 - Every page has a separate header banner above the main scan form and output, containing
-  the **Skill Atlas** heading and its description. Results and errors stay in the main content.
-- The banner spans the page with a distinct blue background and bottom border. Its text aligns
-  with the main content and wraps on narrow screens. Colors adapt to light and dark preferences
-  while keeping the heading and description readable.
+  the **Skill Atlas** heading, a logo and its description. Results and errors stay in the main content.
+- The banner is the IDE's main toolbar: it spans the page with the dark IntelliJ toolbar color in
+  both themes and the JetBrains gradient (blue, pink, orange) as its bottom border. Its text wraps
+  on narrow screens while keeping the heading and description readable.
 ## Appearance
-- A responsive layout with a clear page heading, grouped scan and filter controls, and bordered
-  skill cards. Cards use two columns on wide screens and one column on screens up to 40rem.
+- The page looks like IntelliJ IDEA (New UI), with its Light and Dark theme colors: the toolbar,
+  the scan form as a bar below it, then the result as an IDE window filling the page height.
+- The window has a tool window stripe, a **Skills** tool window on the left and an editor on the
+  right, with a status bar showing the repository or organization. The tool window holds the
+  repository or organization header, the filter, warnings and the tree of skills, one row per skill
+  with its folder as a hint. Organization projects are collapsible folders in the same tree.
+- Selecting a row shows that skill in the editor: a `SKILL.md` tab, the path as breadcrumbs, the
+  name, the first sentence, the full description when it is longer, a details table (file, copies,
+  location) and an **Open on GitHub** link. Rows are radio buttons, so selection needs no JavaScript
+  and the arrow keys move through the tree. A repository's first matching skill starts selected;
+  with nothing shown, the editor asks to select a skill.
+- Without a result or error, the editor area shows a welcome screen with examples to scan.
+- On screens up to 40rem the window stacks: no stripe, and the selected skill opens below its row.
   Long names and paths wrap without horizontal scrolling; inputs fit narrow screens.
 - Follow the system light or dark preference automatically, including changes while the page is
-  open. Explicit theme colors cover the page, cards, forms, inputs, text, links, buttons,
-  warnings, errors, empty states and progress. No JavaScript or stored preference is needed.
-- Keyboard focus is visibly outlined on links, inputs, buttons and project summaries.
+  open. Explicit theme colors cover the page, panels, forms, inputs, text, links, buttons,
+  selection, warnings, errors, empty states and progress. No JavaScript or stored preference is needed.
+- Keyboard focus is visibly outlined on links, inputs, buttons, tree rows and project summaries.
 ## Output
-The same information as the CLI, one card per skill:
+The same information as the CLI, one tree row and editor view per skill:
 - 📦 the repository, linked; the count of skills; 📌 the scanned commit, short
 - 🧩 the name; the description's *first sentence* (the whole one as a tooltip), else *No description*
 - 📄 the path, linked to the SKILL.md at the scanned commit

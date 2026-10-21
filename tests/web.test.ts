@@ -48,7 +48,7 @@ test('the site banner stays separate from scanning, results and errors', async (
     const page = await live(repo);
     const banner = page.html.match(/<body>\s*(<header\b[^>]*>[\s\S]*?<\/header>)\s*<main>/)?.[1];
     assert.ok(banner, 'a site banner precedes the main content');
-    assert.match(banner, /<h1>🧭 Skill Atlas<\/h1>/);
+    assert.match(banner, /<h1>Skill Atlas<\/h1>/);
     assert.match(banner, /Every <code>SKILL.md<\/code> in a GitHub repository or organization/);
     assert.doesNotMatch(banner, /<form|id="scan-output"|role="alert"/);
     assert.equal((page.html.match(/<h1>/g) ?? []).length, 1);
@@ -84,6 +84,80 @@ test('the delivered layout accommodates narrow screens, long paths and keyboard 
   assert.match(css, /\.skills\s*{[^}]*display:\s*grid/);
   assert.match(css, /input\s*{[^}]*min-width:\s*0/);
 });
+test('the start page shows a welcome screen with repositories to try', async () => {
+  const page = await live();
+  const welcome = page.html.match(/<section class="welcome">([\s\S]*?)<\/section>/)?.[1];
+  assert.ok(welcome, 'a welcome screen in the output');
+  assert.match(welcome, /<h2>Welcome to Skill Atlas<\/h2>/);
+  assert.ok(welcome.includes('href="/?repo=https%3A%2F%2Fgithub.com%2FJetBrains%2Fkotlin"'));
+  assert.doesNotMatch(page.html, /class="ide"/);
+  for (const repo of ['https://github.com/JetBrains/example', 'not a link']) {
+    assert.doesNotMatch((await live(repo)).html, /class="welcome"/, repo);
+  }
+});
+
+test('a result is an IDE window: stripe, Skills tool window, editor and status bar, in IntelliJ colors', async () => {
+  const { html } = await fixture('https://github.com/JetBrains/fixture');
+  const ide = html.match(/<div class="ide">[\s\S]*<div class="status-bar">([\s\S]*?)<\/div>\s*<\/div>/);
+  assert.ok(ide, 'the result is framed as an IDE window');
+  assert.match(ide[0], /<div class="stripe" aria-hidden="true">/);
+  assert.match(ide[0], /<aside class="tool-window" aria-label="Skills">\s*<div class="tool-window-title">Skills<\/div>\s*<section class="repository">/);
+  assert.match(ide[0], /<div class="editor" aria-hidden="true"><p class="editor-hint">Select a skill in the tree/);
+  assert.match(ide[1], /Skill Atlas › fixture/);
+  const css = html.match(/<style>([\s\S]*?)<\/style>/)![1];
+  assert.match(css, /--accent: #3574f0/);
+  assert.match(css, /--header-bg: #27282e/);
+  assert.match(css, /--brand: linear-gradient\(90deg, #087cfa, #fe315d 55%, #f97a12\)/);
+  assert.match(css, /\.pick:checked ~ \.skill-details\s*{[^}]*display: flex/);
+  assert.match(css, /\.pick:focus-visible \+ \.tree-row\s*{[^}]*outline:/);
+});
+
+test('each skill is a tree row; the first starts selected and opens in the editor', async () => {
+  const { html } = await fixture('https://github.com/JetBrains/fixture');
+  const rows = [...html.matchAll(/<input class="pick" type="radio" name="skill" id="(skill-\d+)"( checked)?>\s*<label class="tree-row" for="([^"]+)">[\s\S]*?<span class="tree-label">([^<]*)<\/span><span class="tree-hint">([^<]*)<\/span><\/label>/g)];
+  assert.deepEqual(rows.map((row) => [row[1], row[3], row[4], row[5]]), [
+    ['skill-0', 'skill-0', 'code-style', '.github/skills'],
+    ['skill-1', 'skill-1', 'code-style', 'plugins/tools/skills'],
+    ['skill-2', 'skill-2', 'commits', '.agents/skills'],
+    ['skill-3', 'skill-3', 'release-checklist', '.agents/skills'],
+  ]);
+  assert.deepEqual(rows.map((row) => Boolean(row[2])), [true, false, false, false]);
+  const filtered = await fixture('https://github.com/JetBrains/fixture', '/?filter=commits');
+  assert.match(filtered.html, /id="skill-0" checked>\s*<label class="tree-row" for="skill-0">[\s\S]*?>commits</);
+});
+
+test('the editor shows the tab, breadcrumbs, full description, details and a GitHub link', async () => {
+  const { html } = await live('https://github.com/JetBrains/example');
+  const editor = html.match(/<article class="skill-details" aria-label="commits">([\s\S]*?)<\/article>/)?.[1];
+  assert.ok(editor, 'the skill has an editor view');
+  assert.match(editor, /<span class="tab">[\s\S]*?SKILL\.md<\/span>/);
+  assert.deepEqual(texts(editor, 'crumbs')[0].split('›'), ['.claude', 'skills', 'commits', 'SKILL.md']);
+  assert.deepEqual(texts(editor, 'about'), ['Write commit messages the way this repository does. Use for every commit.']);
+  assert.match(editor, /<span class="property-label">File<\/span><p class="path">/);
+  assert.ok(editor.includes(`<a class="open-link" href="https://github.com/JetBrains/example/blob/${EXAMPLE_COMMIT}/.claude/skills/commits/SKILL.md">Open on GitHub ↗</a>`));
+  const fixtures = await fixture('https://github.com/JetBrains/fixture');
+  assert.match(fixtures.html, /<span class="property-label">Copies<\/span><p class="copies">/);
+  assert.match(fixtures.html, /<span class="property-label">Location<\/span><p class="outside">/);
+});
+
+test('a single-sentence description is not repeated in the editor', async () => {
+  const commit = 'b'.repeat(40);
+  const single = await serve((input) => openGitHub(input, { fetch: replay({
+    'https://api.github.com/repos/JetBrains/single': { status: 200, body: { full_name: 'JetBrains/single', default_branch: 'main' } },
+    'https://api.github.com/repos/JetBrains/single/commits/main': { status: 200, body: { sha: commit } },
+    [`https://api.github.com/repos/JetBrains/single/git/trees/${commit}?recursive=1`]: {
+      status: 200, body: { truncated: false, tree: [{ path: '.agents/skills/lint/SKILL.md', type: 'blob', mode: '100644' }] },
+    },
+    [`https://raw.githubusercontent.com/JetBrains/single/${commit}/.agents/skills/lint/SKILL.md`]: {
+      status: 200, body: '---\nname: lint\ndescription: Run the linter.\n---\n',
+    },
+  }) }));
+  const { html } = await single('https://github.com/JetBrains/single');
+  assert.deepEqual(texts(html, 'description'), ['Run the linter.']);
+  assert.deepEqual(texts(html, 'about'), []);
+  assert.doesNotMatch(html, /<h4>Description<\/h4>/);
+});
+
 test('a repository link → the repository, its count, its commit, and each skill as the CLI shows it', async () => {
   const page = await live('https://github.com/JetBrains/example');
   assert.equal(page.status, 200);
