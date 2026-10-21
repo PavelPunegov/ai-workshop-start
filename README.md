@@ -40,6 +40,10 @@ Each submission scans the repository again; the filtered URL can be bookmarked o
 The Skill Atlas title and description sit in a separate blue header above the scan form, with
 colors that follow your system's light or dark theme.
 
+The web view follows your system's light or dark theme automatically, including when it changes
+while the page is open. Cards and forms adapt to narrow screens, and keyboard focus stays visible.
+The layout and themes also work with JavaScript disabled; no theme preference is stored.
+
 You can also paste an organization URL such as `https://github.com/JetBrains`. The page shows a
 live progress bar, an organization summary, and a collapsible section for every project. Expand a
 project to see its skills; **Filter skills** searches across projects. Live progress requires

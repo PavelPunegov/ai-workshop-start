@@ -10,6 +10,14 @@ A *thin client*, like the CLI: the server and its entry in `src/web.ts`, the HTM
 - The banner spans the page with a distinct blue background and bottom border. Its text aligns
   with the main content and wraps on narrow screens. Colors adapt to light and dark preferences
   while keeping the heading and description readable.
+## Appearance
+- A responsive layout with a clear page heading, grouped scan and filter controls, and bordered
+  skill cards. Cards use two columns on wide screens and one column on screens up to 40rem.
+  Long names and paths wrap without horizontal scrolling; inputs fit narrow screens.
+- Follow the system light or dark preference automatically, including changes while the page is
+  open. Explicit theme colors cover the page, cards, forms, inputs, text, links, buttons,
+  warnings, errors, empty states and progress. No JavaScript or stored preference is needed.
+- Keyboard focus is visibly outlined on links, inputs, buttons and project summaries.
 ## Output
 The same information as the CLI, one card per skill:
 - 📦 the repository, linked; the count of skills; 📌 the scanned commit, short

@@ -56,6 +56,34 @@ test('the site banner stays separate from scanning, results and errors', async (
   }
 });
 
+test('the delivered page supports both system themes without browser scripting or stored preferences', async () => {
+  const pages = [await live(), await fixture('https://github.com/JetBrains/fixture'), await live('invalid')];
+  for (const { html } of pages) {
+    const css = html.match(/<style>([\s\S]*?)<\/style>/)![1];
+    assert.match(css, /color-scheme:\s*light dark/);
+    const darkRule = css.match(/@media\s*\(prefers-color-scheme:\s*dark\)\s*{\s*:root\s*{([^}]+)}/);
+    assert.ok(darkRule, 'a dark system preference overrides the page palette');
+    const dark = darkRule[1];
+    for (const token of ['background', 'surface', 'surface-soft', 'text', 'muted', 'line', 'accent', 'button', 'button-hover', 'error-bg', 'error-text', 'error-line', 'warning-bg', 'warning-text', 'warning-line']) {
+      assert.match(dark, new RegExp(`--${token}:\\s*#[0-9a-f]{6}`, 'i'), token);
+    }
+    assert.match(css, /body\s*{[^}]*background:[^}]*var\(--background\)/);
+    assert.match(css, /body\s*{[^}]*color:\s*var\(--text\)/);
+    assert.match(css, /\.error\s*{[^}]*background:\s*var\(--error-bg\)/);
+    assert.match(css, /\.warnings\s*{[^}]*background:\s*var\(--warning-bg\)/);
+    assert.doesNotMatch(html, /localStorage|sessionStorage/);
+  }
+});
+
+test('the delivered layout accommodates narrow screens, long paths and keyboard focus', async () => {
+  const { html } = await fixture('https://github.com/JetBrains/fixture');
+  const css = html.match(/<style>([\s\S]*?)<\/style>/)![1];
+  assert.match(css, /overflow-wrap:\s*anywhere/);
+  assert.match(css, /:focus-visible\s*{[^}]*outline:/);
+  assert.match(css, /@media\s*\(max-width:\s*40rem\)/);
+  assert.match(css, /\.skills\s*{[^}]*display:\s*grid/);
+  assert.match(css, /input\s*{[^}]*min-width:\s*0/);
+});
 test('a repository link → the repository, its count, its commit, and each skill as the CLI shows it', async () => {
   const page = await live('https://github.com/JetBrains/example');
   assert.equal(page.status, 200);
