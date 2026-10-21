@@ -7,7 +7,7 @@ export type Fetch = (url: string, init?: { headers?: Record<string, string>; sig
 
 export type GitHubOptions = {
   fetch: Fetch;
-  /** With a token, skills are found through code search; without it, through the tree. */
+  /** Authenticates all requests; enables code search when the tree is truncated. */
   token?: string;
   signal?: AbortSignal;
 };
@@ -55,7 +55,7 @@ export async function openGitHub(input: string, options: GitHubOptions): Promise
   const id = info.full_name;
   const sha = await defaultCommit(github, id, info.default_branch);
   const warnings: string[] = [];
-  const paths = !sha ? [] : options.token ? await searchPaths(github, id) : await treePaths(github, id, sha, warnings);
+  const paths = !sha ? [] : await treePaths(github, id, sha, warnings, !!options.token);
   const [organization, repo] = id.split('/');
   return {
     repository: { id, organization, name: repo, url: `https://github.com/${id}`, commit: sha },
@@ -90,10 +90,12 @@ async function searchPaths(github: Client, id: string): Promise<string[]> {
 
 type Tree = { truncated: boolean; tree: { path: string; mode: string; type: string; sha: string }[] };
 
-/** The whole tree at once, or only the skill roots when it is too large for one answer. */
-async function treePaths(github: Client, id: string, sha: string, warnings: string[]): Promise<string[]> {
+/** Prefer the commit's tree; oversized trees use code search or the known skill roots. */
+async function treePaths(github: Client, id: string, sha: string, warnings: string[], authenticated: boolean): Promise<string[]> {
   const tree = await github.json<Tree>(`${API}/repos/${id}/git/trees/${sha}?recursive=1`);
   if (!tree.truncated) return files(tree);
+  // Code search has a separate, much smaller quota; reserve it for oversized trees.
+  if (authenticated) return searchPaths(github, id);
   warnings.push(`the tree is too large to list at once; looked only in ${SKILL_ROOTS.join(', ')} (GITHUB_TOKEN searches everywhere)`);
   const paths: string[] = [];
   for (const root of SKILL_ROOTS) {

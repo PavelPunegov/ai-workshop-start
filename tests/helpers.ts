@@ -15,9 +15,9 @@ export const EXAMPLE_COMMIT = '5ab6270ab772d113e8ad52ebfcaa0109c522ae00';
 const EXAMPLE: Recording = {
   'https://api.github.com/repos/JetBrains/example': { status: 200, body: { full_name: 'JetBrains/example', default_branch: 'main' } },
   'https://api.github.com/repos/JetBrains/example/commits/main': { status: 200, body: { sha: EXAMPLE_COMMIT } },
-  'https://api.github.com/search/code?q=filename:SKILL.md+repo:JetBrains/example&per_page=100&page=1': {
+  [`https://api.github.com/repos/JetBrains/example/git/trees/${EXAMPLE_COMMIT}?recursive=1`]: {
     status: 200,
-    body: { total_count: 1, items: [{ path: '.claude/skills/commits/SKILL.md' }] },
+    body: { truncated: false, tree: [{ path: '.claude/skills/commits/SKILL.md', type: 'blob', mode: '100644' }] },
   },
   [`https://raw.githubusercontent.com/JetBrains/example/${EXAMPLE_COMMIT}/.claude/skills/commits/SKILL.md`]: {
     status: 200,
@@ -33,7 +33,7 @@ export async function atlas(args: string[]) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const code = await run(args, {
-    // With a token, through code search, as EXAMPLE answers it.
+    // Authenticated tree and file requests, as EXAMPLE answers them.
     open: (input) => (parseGitHubUrl(input) ? openGitHub(input, { fetch: github, token: 'test' }) : openDirectory(input)),
     print: (text) => stdout.push(text),
     error: (text) => stderr.push(text),

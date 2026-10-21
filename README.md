@@ -14,7 +14,9 @@ The report starts with the organization name, project count and total skill coun
 the skills in each project. Progress goes to stderr; the final report goes to stdout. All visible
 repositories are included, including forks, archived projects and projects without skills. Copies
 count once within a project; the same skill in two projects counts twice. A failure stops the scan
-with an error instead of showing incomplete totals.
+with an error instead of showing incomplete totals. Up to four projects run concurrently; results
+stay sorted by repository name. Each project reads up to four skill files at a time. A failure or
+cancellation aborts active requests and stops queued projects.
 
 ```console
 $ npm ci
@@ -55,7 +57,10 @@ Node's `fetch` uses `HTTPS_PROXY`; otherwise the page answers `Cannot reach GitH
 
 Set `GITHUB_TOKEN` for a higher GitHub rate limit and to include private repositories the token can
 read. Organization scans can make many requests, so a token is recommended. No scan results are
-stored. `npm test` runs the tests.
+stored. File discovery uses the scanned commit's tree API, reserving authenticated code search
+and its smaller rate limit for truncated trees. Without a token, a truncated tree warns and scans
+only the known skill roots. GitHub can still reject a scan when its API quota is exhausted;
+parallelism does not increase that quota. `npm test` runs the tests.
 
 - [spec/](spec/): what it does. [AGENTS.md](AGENTS.md): the definition of done.
 - [fixture/](fixture/README.md): a small repository for the tests.
