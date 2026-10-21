@@ -4,6 +4,14 @@ A *thin client*, like the CLI: the server and its entry in `src/web.ts`, the HTM
 `npm start` (`PORT`, default 3000): a page at `/` with a form for a **GitHub repository or organization link**.
 `GET /?repo=<URL>` scans and renders the result **on the server**; *nothing is stored*.
 `GITHUB_TOKEN`, optional: as for the CLI.
+## Appearance
+- A responsive layout with a clear page heading, grouped scan and filter controls, and bordered
+  skill cards. Cards use two columns on wide screens and one column on screens up to 40rem.
+  Long names and paths wrap without horizontal scrolling; inputs fit narrow screens.
+- Follow the system light or dark preference automatically, including changes while the page is
+  open. Explicit theme colors cover the page, cards, forms, inputs, text, links, buttons,
+  warnings, errors, empty states and progress. No JavaScript or stored preference is needed.
+- Keyboard focus is visibly outlined on links, inputs, buttons and project summaries.
 ## Output
 The same information as the CLI, one card per skill:
 - 📦 the repository, linked; the count of skills; 📌 the scanned commit, short
