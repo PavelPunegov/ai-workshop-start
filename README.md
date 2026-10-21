@@ -39,6 +39,8 @@ Skill Atlas: http://localhost:3000
 Open it, paste a GitHub link, get the skills. Use **Filter skills** to search names, full descriptions,
 and paths (including copies), ignoring case. Submit with **Filter**; **Clear filter** shows all skills.
 Each submission scans the repository again; the filtered URL can be bookmarked or shared.
+An empty or whitespace-only submitted link shows an error (HTTP 400) without scanning; the form
+keeps what you typed. Opening the page without a link still shows the empty start form.
 The Skill Atlas title and description sit in a separate blue header above the scan form, with
 colors that follow your system's light or dark theme.
 

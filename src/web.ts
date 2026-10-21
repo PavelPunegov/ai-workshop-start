@@ -52,8 +52,8 @@ export function createWebServer(options: WebOptions = {}): Server {
 /** What the server answers for a request: routing, validation, the scan, and its status. */
 export async function respond(url: URL, method: string | undefined, services: Services): Promise<Answer> {
   if (method !== 'GET' || url.pathname !== '/') return { status: 404, page: { error: `Not found: ${url.pathname}` } };
-  const input = url.searchParams.get('repo')?.trim();
-  if (!input) return { status: 200, page: {} };
+  const input = url.searchParams.get('repo');
+  if (input === null) return { status: 200, page: {} };
   const organization = parseGitHubOrganizationUrl(input);
   if (!parseGitHubUrl(input) && !organization) {
     return { status: 400, page: { input, error: `Not a GitHub repository or organization URL: ${input}. Expected https://github.com/<owner>/<repo> or https://github.com/<organization>` } };
