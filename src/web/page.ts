@@ -3,10 +3,10 @@
 import { skillLink, type Repository, type Skill } from '../core/model.ts';
 import type { ScanResult } from '../core/scan.ts';
 import type { OrganizationResult } from '../core/organization.ts';
-import { AGENT_FOLDER_NAMES, countSkills, countProjects, firstSentence, isOutside, organizationSkillCount } from '../present.ts';
+import { AGENT_FOLDER_NAMES, countSkills, countProjects, firstSentence, isOutside, nameWords, organizationSkillCount, skillGroups, skillTags } from '../present.ts';
 
 /** What the page shows: the form alone, a scan's result, or an error. */
-export type Page = { input?: string; filter?: string; result?: ScanResult; organization?: OrganizationResult; error?: string };
+export type Page = { input?: string; filter?: string; tag?: string; result?: ScanResult; organization?: OrganizationResult; error?: string };
 
 export function renderPage(page: Page): string {
   const { input = '', result, organization } = page;
@@ -45,59 +45,86 @@ export function renderPage(page: Page): string {
 }
 
 /** A fragment for both the server page and the live scan's final event. */
-export function renderOutput({ input = '', filter = '', result, organization, error }: Page): string {
+export function renderOutput({ input = '', filter = '', tag = '', result, organization, error }: Page): string {
   if (error) return `<div class="error" role="alert">❌ ${escape(error)}</div>\n`;
-  if (organization) return renderOrganization(organization, input, filter);
-  return result ? renderResult(result, input, filter) : '';
+  const query = { input, filter, tag: tag.trim().toLowerCase() };
+  if (organization) return renderOrganization(organization, query);
+  return result ? renderResult(result, query) : '';
 }
 
-function matchingSkills(skills: Skill[], filter: string): Skill[] {
+/** What narrows the skills shown: the scanned link, a filter text and a group's word. */
+type Query = { input: string; filter: string; tag: string };
+
+/** The skills shown, as rendered: the groups of every scanned skill, for their tags. */
+type Shown = Query & { groups: Map<string, number> };
+
+function matchingSkills(skills: Skill[], { filter, tag }: Query): Skill[] {
   const query = filter.trim().toLowerCase();
   return skills.filter((skill) =>
-    [skill.name, skill.description, skill.path, ...skill.copies].some((text) => text.toLowerCase().includes(query)),
+    [skill.name, skill.description, skill.path, ...skill.copies].some((text) => text.toLowerCase().includes(query)) &&
+    (!tag || nameWords(skill.name).includes(tag)),
   );
 }
 
-function renderOrganization({ organization, projects }: OrganizationResult, input: string, filter: string): string {
+function renderOrganization({ organization, projects }: OrganizationResult, query: Query): string {
   const total = organizationSkillCount(projects);
-  const shown = projects.reduce((count, project) => count + matchingSkills(project.skills, filter).length, 0);
+  const shown = { ...query, groups: skillGroups(projects.flatMap((project) => project.skills)) };
+  const matched = projects.reduce((count, project) => count + matchingSkills(project.skills, query).length, 0);
   return [
     `<section class="organization"><h2>🏢 <a href="${escape(organization.url)}">${escape(organization.id)}</a> · ${countProjects(projects.length)} · ${countSkills(total)}</h2></section>\n`,
     `<p class="progress">Scan complete: ${projects.length}/${projects.length} projects <progress value="${projects.length || 1}" max="${projects.length || 1}" aria-label="Projects scanned"></progress></p>\n`,
-    total ? renderFilter(input, filter, shown, total) : '',
-    projects.length ? projects.map((project) => renderProject(project, filter)).join('') : '<p class="empty">No repositories in this organization.</p>\n',
+    total ? renderFilter(shown, matched, total) : '',
+    projects.length ? projects.map((project) => renderProject(project, shown)).join('') : '<p class="empty">No repositories in this organization.</p>\n',
   ].join('');
 }
 
-function renderProject({ repository, skills, warnings }: ScanResult, filter: string): string {
-  const matches = matchingSkills(skills, filter);
+function renderProject({ repository, skills, warnings }: ScanResult, shown: Shown): string {
+  const matches = matchingSkills(skills, shown);
   return `<details class="project">
 <summary>📦 ${escape(repository.id)} · ${countSkills(skills.length)}</summary>
-${renderHeader(repository, skills.length)}${renderWarnings(warnings)}${skills.length && !matches.length ? '<p class="empty">No skills match this filter.</p>\n' : renderSkills(repository, matches)}
+${renderHeader(repository, skills.length)}${renderWarnings(warnings)}${skills.length && !matches.length ? '<p class="empty">No skills match this filter.</p>\n' : renderSkills(repository, matches, shown)}
 </details>\n`;
 }
 
-function renderResult({ repository, skills, warnings }: ScanResult, input: string, filter: string): string {
-  const matches = matchingSkills(skills, filter);
+function renderResult({ repository, skills, warnings }: ScanResult, query: Query): string {
+  const shown = { ...query, groups: skillGroups(skills) };
+  const matches = matchingSkills(skills, query);
   return [
     renderHeader(repository, skills.length),
     renderWarnings(warnings),
-    skills.length ? renderFilter(input, filter, matches.length, skills.length) : '',
-    skills.length && !matches.length ? '<p class="empty">No skills match this filter.</p>\n' : renderSkills(repository, matches),
+    skills.length ? renderFilter(shown, matches.length, skills.length) : '',
+    skills.length && !matches.length ? '<p class="empty">No skills match this filter.</p>\n' : renderSkills(repository, matches, shown),
   ].join('');
 }
 
-function renderFilter(input: string, filter: string, shown: number, total: number): string {
+/** The filter form, keeping the selected group, then every group as a tag. */
+function renderFilter({ input, filter, tag, groups }: Shown, shown: number, total: number): string {
   const clearUrl = `/?${new URLSearchParams({ repo: input })}`;
+  const keptTag = tag ? `\n<input type="hidden" name="tag" value="${escape(tag)}">` : '';
   return `<form method="get" action="/">
-<input type="hidden" name="repo" value="${escape(input)}">
+<input type="hidden" name="repo" value="${escape(input)}">${keptTag}
 <label for="filter">Filter skills</label>
 <input id="filter" name="filter" type="search" value="${escape(filter)}" placeholder="Name, description or path" aria-describedby="filter-count">
 <button type="submit">Filter</button>
 <a href="${escape(clearUrl)}">Clear filter</a>
 </form>
 <p class="filter-count" id="filter-count">Showing ${shown} of ${countSkills(total)}</p>
-`;
+${renderGroups(input, tag, groups)}`;
+}
+
+/** Nothing when no two skills share a word. */
+function renderGroups(input: string, tag: string, groups: Map<string, number>): string {
+  if (groups.size === 0) return '';
+  const tags = [...groups].map(([word, count]) => `${renderTag(input, tag, word)} <span class="tag-count">${count}</span>`);
+  return `<nav class="groups" aria-label="Skill groups">🏷️ Groups: ${tags.join(' ')}</nav>\n`;
+}
+
+/** A link to the skills sharing the word; the selected one links back to all skills. */
+function renderTag(input: string, selected: string, word: string): string {
+  const current = word === selected;
+  const url = `/?${new URLSearchParams(current ? { repo: input } : { repo: input, tag: word })}`;
+  const title = current ? 'Show all skills' : `Show the skills named with “${word}”`;
+  return `<a class="tag" href="${escape(url)}" title="${escape(title)}"${current ? ' aria-current="true"' : ''}>#${escape(word)}</a>`;
 }
 
 /** The repository, linked; the count of skills; the scanned commit, short. */
@@ -122,25 +149,34 @@ function renderWarnings(warnings: string[]): string {
 `;
 }
 
-function renderSkills(repository: Repository, skills: Skill[]): string {
+function renderSkills(repository: Repository, skills: Skill[], shown: Shown): string {
   if (skills.length === 0) return '<p class="empty">🫙 No SKILL.md in this repository.</p>\n';
-  return `<ul class="skills">\n${skills.map((skill) => renderSkill(repository, skill)).join('\n')}\n</ul>\n`;
+  return `<ul class="skills">\n${skills.map((skill) => renderSkill(repository, skill, shown)).join('\n')}\n</ul>\n`;
 }
 
-/** The CLI's lines for one skill: name, first sentence, link, copies, and whether it is outside. */
-function renderSkill(repository: Repository, skill: Skill): string {
+/**
+ * The CLI's lines for one skill: name, first sentence and its groups as tags, link, copies,
+ * and whether it is outside.
+ */
+function renderSkill(repository: Repository, skill: Skill, { input, tag, groups }: Shown): string {
   const lines = [
     `<h3 class="name">🧩 ${escape(skill.name)}</h3>`,
     skill.description
       ? `<p class="description" title="${escape(skill.description)}">${escape(firstSentence(skill.description))}</p>`
       : '<p class="description muted">No description</p>',
+    renderTags(skillTags(skill, groups), input, tag),
     `<p class="path">📄 <a href="${escape(skillLink(repository, skill))}"><code>${escape(skill.path)}</code></a></p>`,
   ];
   if (skill.copies.length > 0) {
     lines.push(`<p class="copies">🪞 Also in ${skill.copies.map((copy) => `<code>${escape(copy)}</code>`).join(', ')}</p>`);
   }
   if (isOutside(skill)) lines.push(`<p class="outside">📍 Outside ${AGENT_FOLDER_NAMES}</p>`);
-  return `<li class="skill">\n${lines.join('\n')}\n</li>`;
+  return `<li class="skill">\n${lines.filter(Boolean).join('\n')}\n</li>`;
+}
+
+/** The skill's groups under its description; nothing when it has none. */
+function renderTags(tags: string[], input: string, selected: string): string {
+  return tags.length ? `<p class="tags">${tags.map((word) => renderTag(input, selected, word)).join(' ')}</p>` : '';
 }
 
 function escape(text: string): string {
@@ -200,6 +236,12 @@ button:hover { background: var(--button-hover); }
 .description { color: var(--text); }
 .path, .copies, .outside { font-size: 0.875rem; color: var(--muted); }
 .outside { display: inline-block; padding: 0.25rem 0.5rem; background: var(--surface-soft); border-radius: 0.375rem; }
+.groups { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; color: var(--muted); font-size: 0.875rem; }
+.tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.tag { display: inline-block; padding: 0.15rem 0.6rem; font-size: 0.8125rem; font-weight: 600; text-decoration: none; color: var(--accent); background: var(--surface-soft); border: 1px solid var(--line); border-radius: 999px; }
+.tag:hover { border-color: var(--accent); }
+.tag[aria-current] { color: var(--surface); background: var(--accent); border-color: var(--accent); }
+.tag-count { margin-left: -0.25rem; }
 .filter-count, .progress { color: var(--muted); font-size: 0.875rem; }
 .empty { color: var(--muted); padding: 2rem 1.5rem; text-align: center; border: 1px dashed var(--line); border-radius: 0.875rem; }
 .project { border: 1px solid var(--line); border-radius: 0.875rem; padding: 1.25rem; margin: 1rem 0; background: var(--surface); }

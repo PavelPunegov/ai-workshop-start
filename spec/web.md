@@ -38,6 +38,18 @@ The same information as the CLI, one card per skill:
   header still counts all unique skills; matches keep their original order and copy information.
 - Keep scan warnings visible. With no matches, show *No skills match this filter.*;
   a repository without skills still shows *No SKILL.md in this repository.* and no filter form.
+## Groups
+- Skills are grouped by the words their names share: a name's words are its lowercase runs of
+  letters and digits, at least two characters long (`debug-Tests` → `debug`, `tests`). A word in
+  the names of at least two unique skills is a group; an organization's groups span its projects.
+  The rule lives in `src/present.ts`.
+- Each card shows its groups as clickable `#word` tags under the description, sorted by word.
+  The filter area lists every group as a tag with its skill count. No shared words: no tags.
+- A tag links to `GET /?repo=<URL>&tag=<word>`: only the skills whose name has that word, matched
+  whole and ignoring case and surrounding whitespace. No JavaScript is required. It counts in
+  `Showing <matched> of <total> skills` and the no-match message like the filter.
+- The selected tag is marked `aria-current` and links back to all skills. The filter form keeps
+  the tag, and both narrow the skills; **Clear filter** drops both. The tag is escaped as text.
 ## Errors
 A ❌ message on the page, the form kept with what was typed:
 - Malformed input, anything but `github.com/<owner>/<repo>` or `github.com/<organization>` → status *400*, nothing fetched.

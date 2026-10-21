@@ -60,9 +60,9 @@ export async function respond(url: URL, method: string | undefined, services: Se
   }
   try {
     if (organization) {
-      return { status: 200, page: { input, filter: url.searchParams.get('filter') ?? '', organization: await scanOrganization(input, services.github ?? { fetch, token: process.env.GITHUB_TOKEN || undefined }) } };
+      return { status: 200, page: { input, filter: url.searchParams.get('filter') ?? '', tag: url.searchParams.get('tag') ?? '', organization: await scanOrganization(input, services.github ?? { fetch, token: process.env.GITHUB_TOKEN || undefined }) } };
     }
-    return { status: 200, page: { input, filter: url.searchParams.get('filter') ?? '', result: await scan(await services.open(input)) } };
+    return { status: 200, page: { input, filter: url.searchParams.get('filter') ?? '', tag: url.searchParams.get('tag') ?? '', result: await scan(await services.open(input)) } };
   } catch (error) {
     const status = statusOf(error);
     if (status === 500) services.log(error);
