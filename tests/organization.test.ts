@@ -122,11 +122,11 @@ test('repository pagination includes every project, deduplicates page overlaps, 
   assert.equal(urls.length, 3);
 });
 
-test('authenticated organization scans authenticate skill reads as well as listing and code search', async () => {
+test('authenticated organizations use trees and still scan when code search is rate limited', async () => {
   const answers = organization();
   for (const name of ['alpha', 'beta']) {
     answers[`${API}/search/code?q=filename:SKILL.md+repo:Acme/${name}&per_page=100&page=1`] = {
-      status: 200, body: { total_count: 1, items: [{ path: '.agents/skills/commits/SKILL.md' }] },
+      status: 403, body: { message: 'API rate limit exceeded' },
     };
   }
   const raw: string[] = [];
@@ -138,7 +138,7 @@ test('authenticated organization scans authenticate skill reads as well as listi
       return recorded(url, init);
     },
   });
-  assert.equal(raw.length, 2);
+  assert.equal(raw.length, 4);
   assert.equal(result.projects.length, 3);
 });
 
@@ -275,24 +275,143 @@ test('unexpected event failures are logged with only a generic error sent to the
   assert.equal(logs.length, 1);
 });
 
-test('disconnecting the progress request aborts GitHub work and never starts the next project', { timeout: 5000 }, async (t) => {
-  const recorded = replay(organization());
+test('disconnecting the progress request aborts every active project and never starts queued projects', { timeout: 5000 }, async (t) => {
+  const answers = organization();
+  answers[`${API}/orgs/Acme/repos?type=all&per_page=100&page=1`].body = Array.from({ length: 8 }, (_, i) => ({ full_name: `Acme/project-${i}` }));
+  const recorded = replay(answers);
+  const active: string[] = [];
+  const cancellations: string[] = [];
   let cancelled!: () => void;
   let started!: () => void;
   const aborted = new Promise<void>((resolve) => { cancelled = resolve; });
   const pending = new Promise<void>((resolve) => { started = resolve; });
   const base = await serve(t, async (url, init) => {
-    assert.notEqual(url, `${API}/repos/Acme/beta`);
-    if (url !== `${API}/repos/Acme/alpha`) return recorded(url, init);
+    if (!url.startsWith(`${API}/repos/Acme/project-`)) return recorded(url, init);
+    active.push(url);
     return new Promise<Response>((_resolve, reject) => {
-      init!.signal!.addEventListener('abort', () => { cancelled(); reject(new Error('aborted')); }, { once: true });
-      started();
+      init!.signal!.addEventListener('abort', () => {
+        cancellations.push(url);
+        if (cancellations.length === 4) cancelled();
+        reject(new Error('aborted'));
+      }, { once: true });
+      if (active.length === 4) started();
     });
   });
-  const response = await fetch(`${base}/events?org=github.com/Acme`);
+  const disconnect = new AbortController();
+  t.after(() => disconnect.abort());
+  const response = await fetch(`${base}/events?org=github.com/Acme`, { signal: disconnect.signal });
   const reader = response.body!.getReader();
   await reader.read();
   await pending;
   await reader.cancel();
   await aborted;
+  assert.equal(active.length, 4);
+  assert.deepEqual(cancellations, active);
+});
+
+test('projects run four at a time, report completion order, and return sorted results', { timeout: 5000 }, async (t) => {
+  const answers = organization();
+  const names = Array.from({ length: 9 }, (_, i) => `project-${i}`);
+  answers[`${API}/orgs/Acme/repos?type=all&per_page=100&page=1`].body = names.map((name) => ({ full_name: `Acme/${name}` }));
+  for (const name of names) {
+    answers[`${API}/repos/Acme/${name}`] = { status: 200, body: { full_name: `Acme/${name}`, default_branch: 'main' } };
+    answers[`${API}/repos/Acme/${name}/commits/main`] = { status: 409, body: { message: 'Git Repository is empty.' } };
+  }
+  const recorded = replay(answers);
+  const started: string[] = [];
+  const completed: string[] = [];
+  const progress: number[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const pending = scanOrganization('github.com/Acme', { fetch: async (url, init) => {
+    if (/\/repos\/Acme\/project-\d$/.test(url)) {
+      started.push(url);
+      if (!url.endsWith('project-1')) await gate;
+    }
+    if (url.includes('/commits/')) completed.push(url);
+    return recorded(url, init);
+  } }, (event) => { progress.push(event.completed); });
+  t.after(async () => { release(); await pending.catch(() => {}); });
+  await new Promise(setImmediate);
+  // One fast project finishes while the first stays blocked, freeing a worker for project 4.
+  assert.equal(started.length, 5);
+  assert.equal(completed.length, 1);
+  assert.match(completed[0], /project-1/);
+  assert.deepEqual(progress, [0, 1]);
+  release();
+  const result = await pending;
+  assert.deepEqual(result.projects.map((p) => p.repository.id), names.map((name) => `Acme/${name}`));
+  assert.deepEqual(progress, Array.from({ length: 10 }, (_, i) => i));
+});
+
+test('a project failure cancels other workers, stops queued projects, and preserves the error', { timeout: 5000 }, async () => {
+  const answers = organization();
+  answers[`${API}/orgs/Acme/repos?type=all&per_page=100&page=1`].body = Array.from({ length: 8 }, (_, i) => ({ full_name: `Acme/project-${i}` }));
+  const recorded = replay(answers);
+  const started: string[] = [];
+  const aborted: string[] = [];
+  const progress: number[] = [];
+  await assert.rejects(scanOrganization('github.com/Acme', { fetch: async (url, init) => {
+    if (!url.startsWith(`${API}/repos/`)) return recorded(url, init);
+    started.push(url);
+    if (url.endsWith('project-0')) return new Response(JSON.stringify({ message: 'API rate limit exceeded' }), { status: 403 });
+    return new Promise<Response>((_resolve, reject) => {
+      init!.signal!.addEventListener('abort', () => { aborted.push(url); reject(new Error('aborted')); }, { once: true });
+    });
+  } }, (event) => { progress.push(event.completed); }), /GitHub rate limit reached/);
+  assert.equal(started.length, 4);
+  assert.equal(aborted.length, 3);
+  assert.deepEqual(progress, [0]);
+});
+
+test('organization skill reads are parallel but bounded even with many files', { timeout: 5000 }, async (t) => {
+  const answers = organization();
+  answers[`${API}/orgs/Acme/repos?type=all&per_page=100&page=1`].body = [{ full_name: 'Acme/alpha' }];
+  const paths = Array.from({ length: 20 }, (_, i) => `.agents/skills/skill-${i}/SKILL.md`);
+  answers[`${API}/repos/Acme/alpha/git/trees/abc1234?recursive=1`].body = {
+    truncated: false, tree: paths.map((path) => ({ path, type: 'blob', mode: '100644' })),
+  };
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let reads = 0;
+  const recorded = replay(answers);
+  const pending = scanOrganization('github.com/Acme', { fetch: async (url, init) => {
+    if (!url.startsWith('https://raw.')) return recorded(url, init);
+    reads++;
+    await gate;
+    return new Response(content);
+  } });
+  t.after(async () => { release(); await pending.catch(() => {}); });
+  await new Promise(setImmediate);
+  assert.equal(reads, 4);
+  release();
+  const result = await pending;
+  assert.equal(reads, 20);
+  assert.equal(result.projects[0].skills.length, 1);
+  assert.equal(result.projects[0].skills[0].copies.length, 19);
+});
+
+test('authenticated truncated trees fall back to paginated code search', async () => {
+  const answers = organization();
+  answers[`${API}/orgs/Acme/repos?type=all&per_page=100&page=1`].body = [{ full_name: 'Acme/alpha' }];
+  answers[`${API}/repos/Acme/alpha/git/trees/abc1234?recursive=1`].body = { truncated: true, tree: [] };
+  const path = '.agents/skills/commits/SKILL.md';
+  answers[`${API}/search/code?q=filename:SKILL.md+repo:Acme/alpha&per_page=100&page=1`] = {
+    status: 200, body: { total_count: 101, items: Array.from({ length: 100 }, () => ({ path })) },
+  };
+  answers[`${API}/search/code?q=filename:SKILL.md+repo:Acme/alpha&per_page=100&page=2`] = {
+    status: 200, body: { total_count: 101, items: [{ path: '.claude/skills/commits/SKILL.md' }] },
+  };
+  const urls: string[] = [];
+  const recorded = replay(answers);
+  const result = await scanOrganization('github.com/Acme', { token: 'test', fetch: async (url, init) => {
+    assert.equal(init?.headers?.Authorization, 'Bearer test');
+    urls.push(url);
+    return recorded(url, init);
+  } });
+  assert.ok(urls.includes(`${API}/repos/Acme/alpha/git/trees/abc1234?recursive=1`));
+  assert.ok(urls.some((url) => url.includes('search/code') && url.endsWith('page=2')));
+  assert.equal(result.projects[0].skills.length, 1);
+  assert.equal(result.projects[0].skills[0].copies.length, 1);
+  assert.deepEqual(result.projects[0].warnings, []);
 });

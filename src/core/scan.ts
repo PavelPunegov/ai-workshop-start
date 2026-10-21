@@ -1,6 +1,7 @@
 import { findSkills, isInsideAgentFolders, type SkillFile } from './find.ts';
 import { sortSkills, type Repository, type Skill } from './model.ts';
 import { parseSkill } from './parse.ts';
+import { mapConcurrent } from './concurrent.ts';
 
 /** A repository to scan: its files, and how to read them. */
 export type Source = {
@@ -18,8 +19,8 @@ export type ScanResult = { repository: Repository; skills: Skill[]; warnings: st
 /** fetch → find → parse. Nothing is stored: the result is all there is. */
 export async function scan(source: Source): Promise<ScanResult> {
   const files = findSkills(source.paths, source.repository.name);
-  // The files are read at the same time: on GitHub, each one is a request.
-  const results = await Promise.all(files.map((file) => readSkill(source, file)));
+  // Bound file requests as well as project scans, so large projects cannot cause a burst.
+  const results = await mapConcurrent(files, (file) => readSkill(source, file));
   const read = results.flatMap((result) => (result.read ? [result.read] : []));
   const parsed = groupCopies(read).map((group) => toSkill(source.repository, group));
   return {

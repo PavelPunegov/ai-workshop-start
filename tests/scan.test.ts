@@ -11,6 +11,7 @@ import { test } from 'node:test';
 import { openGitHub } from '../src/core/github.ts';
 import { parseSkill } from '../src/core/parse.ts';
 import { replay } from '../src/core/replay.ts';
+import { scan } from '../src/core/scan.ts';
 import { atlas, CLI, EXAMPLE_COMMIT, FIXTURE } from './helpers.ts';
 
 const fixture = await atlas(['scan', FIXTURE]);
@@ -118,4 +119,30 @@ test('rate limit → a message that asks for GITHUB_TOKEN', async () => {
   await assert.rejects(openGitHub('https://github.com/JetBrains/MPS', { fetch: limited }), {
     message: 'GitHub rate limit reached; set GITHUB_TOKEN',
   });
+});
+
+test('without a token, a truncated tree warns and scans known roots without code search', async () => {
+  const api = 'https://api.github.com/repos/Acme/large';
+  const recorded = replay({
+    [api]: { status: 200, body: { full_name: 'Acme/large', default_branch: 'main' } },
+    [`${api}/commits/main`]: { status: 200, body: { sha: 'commit' } },
+    [`${api}/git/trees/commit?recursive=1`]: { status: 200, body: { truncated: true, tree: [] } },
+    [`${api}/git/trees/commit`]: { status: 200, body: { tree: [{ path: '.agents', type: 'tree', sha: 'agents' }] } },
+    [`${api}/git/trees/agents`]: { status: 200, body: { tree: [{ path: 'skills', type: 'tree', sha: 'skills' }] } },
+    [`${api}/git/trees/skills?recursive=1`]: { status: 200, body: {
+      truncated: false, tree: [{ path: 'commits/SKILL.md', type: 'blob', mode: '100644' }],
+    } },
+    'https://raw.githubusercontent.com/Acme/large/commit/.agents/skills/commits/SKILL.md': { status: 200, body: '---\nname: commits\n---\n' },
+  });
+  const urls: string[] = [];
+  const result = await scan(await openGitHub('github.com/Acme/large', { fetch: async (url, init) => {
+    assert.equal(init?.headers?.Authorization, undefined);
+    urls.push(url);
+    return recorded(url, init);
+  } }));
+  assert.equal(result.skills.length, 1);
+  assert.equal(result.skills[0].path, '.agents/skills/commits/SKILL.md');
+  assert.match(result.warnings[0], /tree is too large.*GITHUB_TOKEN/);
+  assert.equal(urls.filter((url) => url === `${api}/git/trees/commit`).length, 1);
+  assert.ok(!urls.some((url) => url.includes('/search/code')));
 });
