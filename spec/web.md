@@ -4,6 +4,12 @@ A *thin client*, like the CLI: the server and its entry in `src/web.ts`, the HTM
 `npm start` (`PORT`, default 3000): a page at `/` with a form for a **GitHub repository or organization link**.
 `GET /?repo=<URL>` scans and renders the result **on the server**; *nothing is stored*.
 `GITHUB_TOKEN`, optional: as for the CLI.
+## Site header
+- Every page has a separate header banner above the main scan form and output, containing
+  the **Skill Atlas** heading and its description. Results and errors stay in the main content.
+- The banner spans the page with a distinct blue background and bottom border. Its text aligns
+  with the main content and wraps on narrow screens. Colors adapt to light and dark preferences
+  while keeping the heading and description readable.
 ## Output
 The same information as the CLI, one card per skill:
 - 📦 the repository, linked; the count of skills; 📌 the scanned commit, short

@@ -43,6 +43,19 @@ test('no repository yet → the form alone', async () => {
   assert.doesNotMatch(page.html, /class="(error|skills|repository)"/);
 });
 
+test('the site banner stays separate from scanning, results and errors', async () => {
+  for (const repo of [undefined, 'https://github.com/JetBrains/example', 'not a link', 'https://github.com/JetBrains/not-answered']) {
+    const page = await live(repo);
+    const banner = page.html.match(/<body>\s*(<header\b[^>]*>[\s\S]*?<\/header>)\s*<main>/)?.[1];
+    assert.ok(banner, 'a site banner precedes the main content');
+    assert.match(banner, /<h1>🧭 Skill Atlas<\/h1>/);
+    assert.match(banner, /Every <code>SKILL.md<\/code> in a GitHub repository or organization/);
+    assert.doesNotMatch(banner, /<form|id="scan-output"|role="alert"/);
+    assert.equal((page.html.match(/<h1>/g) ?? []).length, 1);
+    assert.match(page.html, /<main>\s*<form method="get" action="\/">/);
+  }
+});
+
 test('a repository link → the repository, its count, its commit, and each skill as the CLI shows it', async () => {
   const page = await live('https://github.com/JetBrains/example');
   assert.equal(page.status, 200);

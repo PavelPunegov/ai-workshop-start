@@ -37,6 +37,8 @@ Skill Atlas: http://localhost:3000
 Open it, paste a GitHub link, get the skills. Use **Filter skills** to search names, full descriptions,
 and paths (including copies), ignoring case. Submit with **Filter**; **Clear filter** shows all skills.
 Each submission scans the repository again; the filtered URL can be bookmarked or shared.
+The Skill Atlas title and description sit in a separate blue header above the scan form, with
+colors that follow your system's light or dark theme.
 
 You can also paste an organization URL such as `https://github.com/JetBrains`. The page shows a
 live progress bar, an organization summary, and a collapsible section for every project. Expand a
