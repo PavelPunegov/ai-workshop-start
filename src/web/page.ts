@@ -21,9 +21,13 @@ export function renderPage(page: Page): string {
 <script src="/client.js" defer></script>
 </head>
 <body>
-<main>
+<header class="site-header">
+<div class="site-header-inner">
 <h1>🧭 Skill Atlas</h1>
-<p class="muted">Every <code>SKILL.md</code> in a GitHub repository or organization: its name, description and link.</p>
+<p>Every <code>SKILL.md</code> in a GitHub repository or organization: its name, description and link.</p>
+</div>
+</header>
+<main>
 <form method="get" action="/">
 <label for="repo">🔎 Repository or organization</label>
 <input id="repo" name="repo" type="text" value="${escape(input)}" placeholder="https://github.com/owner/repo" required autofocus>
@@ -145,9 +149,11 @@ function escape(text: string): string {
 }
 
 const STYLE = `
-:root { color-scheme: light dark; --muted: #6b7280; --line: #d1d5db; --accent: #2563eb; }
+:root { color-scheme: light dark; --muted: #6b7280; --line: #d1d5db; --accent: #2563eb; --header-bg: #eff6ff; --header-text: #172554; --header-muted: #334155; --header-line: #bfdbfe; }
 body { font: 16px/1.5 system-ui, sans-serif; margin: 0; }
-main { max-width: 52rem; margin: 0 auto; padding: 2rem 1rem; }
+main, .site-header-inner { max-width: 52rem; margin: 0 auto; padding: 2rem 1rem; }
+.site-header { background: var(--header-bg); color: var(--header-text); border-bottom: 1px solid var(--header-line); }
+.site-header p { max-width: 62ch; margin: 0.5rem 0 0; color: var(--header-muted); }
 h1 { margin: 0; }
 code { font: 0.9em ui-monospace, monospace; }
 a { color: var(--accent); }
@@ -165,5 +171,6 @@ button { font: inherit; padding: 0.5rem 1rem; border: 0; border-radius: 0.375rem
 .project { border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.75rem 1rem; margin: 0.75rem 0; }
 summary { cursor: pointer; font-weight: 600; }
 progress { display: block; width: 100%; margin: 0.5rem 0; }
+@media (prefers-color-scheme: dark) { :root { --header-bg: #172554; --header-text: #eff6ff; --header-muted: #bfdbfe; --header-line: #1e40af; } }
 @media (max-width: 40rem) { form { flex-wrap: wrap; } label { width: 100%; } input { min-width: 0; } }
 `;
