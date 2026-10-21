@@ -3,6 +3,7 @@ A *thin client*, like the CLI: the server and its entry in `src/web.ts`, the HTM
 `src/web/page.ts`, the rules shared with the CLI (first sentence, count, outside) in `src/present.ts`.
 `npm start` (`PORT`, default 3000): a page at `/` with a form for a **GitHub repository or organization link**.
 `GET /?repo=<URL>` scans and renders the result **on the server**; *nothing is stored*.
+With no `repo` parameter, show the start form without an error (status *200*).
 `GITHUB_TOKEN`, optional: as for the CLI.
 ## Site header
 - Every page has a separate header banner above the main scan form and output, containing
@@ -41,6 +42,8 @@ The same information as the CLI, one card per skill:
 ## Errors
 A ❌ message on the page, the form kept with what was typed:
 - Malformed input, anything but `github.com/<owner>/<repo>` or `github.com/<organization>` → status *400*, nothing fetched.
+  A submitted empty or whitespace-only `repo` value is malformed, including `/?repo=` and `/?repo=+++`.
+  Keep the original input in the form, including surrounding whitespace; valid URLs may have surrounding whitespace.
   Local directories are *not* accepted: a web page never reads the server's disk
 - Unreachable or missing repository, rate limit → the CLI's message, status *502*
 - Any other failure → a generic message, status *500*; the details go to the server log, not the page

@@ -90,9 +90,11 @@ test('scan errors and interrupted connections stop progress and do not reconnect
 
 test('repository submissions and browsers without EventSource use the ordinary GET form', () => {
   const page = browser();
-  page.input.value = 'https://github.com/Acme/project';
-  assert.equal(page.submit(), false);
-  assert.equal(page.connections.length, 0);
+  for (const input of ['https://github.com/Acme/project', '', '   ']) {
+    page.input.value = input;
+    assert.equal(page.submit(), false);
+    assert.equal(page.connections.length, 0);
+  }
   const fallback = browser(false);
   assert.equal(fallback.submit(), false);
   assert.equal(fallback.connections.length, 0);

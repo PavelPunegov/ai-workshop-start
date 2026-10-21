@@ -122,6 +122,14 @@ test('skills sorted by name, with copies, outside .agents and .claude, and warni
   assert.match(warnings, /⚠️ Warnings\s+\.agents\/skills\/release-checklist\/SKILL\.md: malformed front matter: /);
 });
 
+test('valid links accept surrounding whitespace and keep it in the form', async () => {
+  const input = '  https://github.com/JetBrains/example  ';
+  const page = await live(input);
+  assert.equal(page.status, 200);
+  assert.ok(page.html.includes(`value="${input}"`));
+  assert.deepEqual(texts(page.html, 'name'), ['🧩 commits']);
+});
+
 test('the filter form keeps the repository and offers a clear link', async () => {
   const page = await fixture('https://github.com/JetBrains/fixture', '/?filter=commits');
   assert.match(page.html, /<label for="filter">Filter skills<\/label>/);
@@ -196,11 +204,12 @@ test('malformed input → an error message, status 400, nothing fetched', async 
     opened = true;
     return openDirectory(input);
   });
-  for (const input of ['not a link', '../fixture', 'https://gitlab.com/JetBrains/kotlin', 'https://github.com/JetBrains/repo/tree/main']) {
+  for (const input of ['', ' ', '   ', '\t\n', '\u00a0', 'not a link', '  not a link  ', '../fixture', 'https://gitlab.com/JetBrains/kotlin', 'https://github.com/JetBrains/repo/tree/main']) {
     const result = await page(input);
     assert.equal(result.status, 400, input);
     assert.match(result.html, /<div class="error" role="alert">❌ Not a GitHub repository or organization URL: /, input);
     assert.doesNotMatch(result.html, /class="skills"/, input);
+    assert.ok(result.html.includes(`value="${input}"`), 'the form keeps the submitted input');
   }
   assert.equal(opened, false);
 });
@@ -239,7 +248,12 @@ test('respond: the status and the page, without a socket', async () => {
   const services = { open: () => openDirectory(FIXTURE), log: () => assert.fail('nothing to log') };
   const answer = (path: string, method = 'GET') => respond(new URL(path, 'http://localhost'), method, services);
   assert.deepEqual(await answer('/'), { status: 200, page: {} });
-  assert.deepEqual(await answer('/?repo=%20'), { status: 200, page: {} });
+  for (const path of ['/?repo', '/?repo=', '/?repo=+++', '/?repo=%20']) {
+    const invalid = await answer(path);
+    assert.equal(invalid.status, 400, path);
+    assert.equal(invalid.page.input, new URL(path, 'http://localhost').searchParams.get('repo'));
+    assert.match(invalid.page.error!, /Not a GitHub repository or organization URL/);
+  }
   assert.equal((await answer('/?repo=nope')).status, 400);
   assert.equal((await answer('/', 'POST')).status, 404);
   const scanned = await answer('/?repo=github.com/JetBrains/fixture');
