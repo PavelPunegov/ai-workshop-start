@@ -12,7 +12,8 @@ scenario, and saves a `.webm` video. You can change what it scans; you don't nee
 The scenario:
 
 1. Open the empty page.
-2. Type the repository link and press **Scan**.
+2. Type the repository or organization link and press **Scan**. For an organization, the video
+   shows the live progress bar, and then the first project that has skills is expanded.
 3. Scroll through the skills.
 4. Type a filter, press **Filter**, and scroll through the matches.
 5. Optional: scan an organization, show the live progress bar, and expand the first project
@@ -33,7 +34,12 @@ The scenario:
 
 - Scans call the live GitHub API, so you need network access. Set `GITHUB_TOKEN` so the scan
   isn't limited by the rate limit or shortened by a "tree is too large" warning:
-  `export GITHUB_TOKEN=$(gh auth token)`.
+  `export GITHUB_TOKEN=$(gh auth token)`, or add `--env-file=.env` after `node` if `.env` sets it.
+- With a token, the app runs one GitHub code search per repository. GitHub allows 10 code searches
+  a minute, and the app stops at the first rate-limit error. So an organization with more than
+  about 10 repositories fails with `GitHub rate limit reached`. For a big organization, record one
+  of its repositories that has skills. To find them:
+  `gh search code --owner <org> --filename SKILL.md`.
 
 ## 2. Record
 
@@ -50,8 +56,8 @@ Options. Map the skill's arguments to these in order:
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--repo <url>` | `https://github.com/JetBrains/kotlin` | Repository to scan first. |
-| `--filter <text>` | `gradle` | Filter to type; `--filter ''` skips it. |
+| `--repo <url>` | `https://github.com/JetBrains/kotlin` | Repository or organization to scan first. |
+| `--filter <text>` | `gradle` | Filter to type; `--filter ''` skips it. On an organization, filtering rescans every project with nothing shown on screen. |
 | `--org <url>` | none | Organization to scan last. Pick a small one: every project is scanned. |
 | `--out <file.webm>` | `recordings/skill-atlas-<time>.webm` | Where to save the video. |
 | `--pace <n>` | `1` | Speed: `2` is twice as fast. Use `3` for a quick check. |

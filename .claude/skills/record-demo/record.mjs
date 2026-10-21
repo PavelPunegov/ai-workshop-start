@@ -69,18 +69,32 @@ if (failure) {
 }
 console.log(`Demo video: ${options.out}`);
 
-/** The story: a repository scan, a filter, then optionally an organization with live progress. */
+/** The story: a repository or organization scan, a filter, then optionally an organization. */
 async function runScenario(page, base) {
   await page.goto(base);
   await pause(1500);
-  await scan(page, options.repo);
-  await page.locator('#filter, .error').first().waitFor({ timeout: 120_000 });
+  await showScan(page, options.repo);
+  if (options.filter) await filter(page, options.filter);
+  if (options.org) {
+    await page.mouse.wheel(0, -10_000);
+    await pause(800);
+    await showScan(page, options.org);
+  }
+  await pause(2000);
+}
+
+/** Scans a link and shows the result; an organization also shows live progress and one project. */
+async function showScan(page, link) {
+  await scan(page, link);
+  await page.locator('.repository, .organization, .error').first().waitFor({ timeout: 600_000 });
   await expectNoError(page);
   await pause(2000);
+  const project = page.locator('details.project summary').filter({ hasNotText: '· 0 skills' }).first();
+  if (await project.count()) {
+    await click(page, project);
+    await pause(1500);
+  }
   await browse(page);
-  if (options.filter) await filter(page, options.filter);
-  if (options.org) await scanOrganization(page, options.org);
-  await pause(2000);
 }
 
 async function scan(page, link) {
@@ -92,29 +106,16 @@ async function scan(page, link) {
 }
 
 async function filter(page, text) {
+  if (!(await page.locator('#filter').count())) return;
   await click(page, page.locator('#filter'));
   await page.keyboard.type(text, { delay: 120 / pace });
   await pause(600);
   await click(page, page.getByRole('button', { name: 'Filter' }));
-  await page.locator('#filter-count').waitFor();
+  // An organization rescans every project here, without live progress.
+  await page.locator('#filter-count, .error').first().waitFor({ timeout: 600_000 });
+  await expectNoError(page);
   await pause(2500);
   await browse(page);
-}
-
-async function scanOrganization(page, link) {
-  await page.mouse.wheel(0, -10_000);
-  await pause(800);
-  await scan(page, link);
-  await page.locator('#scan-progress').waitFor({ timeout: 10_000 }).catch(() => {});
-  await page.locator('.organization, .error').first().waitFor({ timeout: 600_000 });
-  await expectNoError(page);
-  await pause(2000);
-  const project = page.locator('details.project summary').filter({ hasNotText: '· 0 skills' }).first();
-  if (await project.count()) {
-    await click(page, project);
-    await pause(1500);
-    await browse(page);
-  }
 }
 
 /** Scrolls down through the results and back, so the viewer sees them. */
